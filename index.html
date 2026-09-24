@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<title>Ma Bibliothèque Vidéos</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Base de données locale (IndexedDB) pour sauvegarder les VRAIES vidéos sans saturer le téléphone -->
+<script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Typographie Premium (Outfit) -->
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          brand: { accent: '#E50914', dark: '#141414', card: '#181818', hover: '#2F2F2F' }
+        },
+        fontFamily: { sans: ['Outfit', '-apple-system', 'sans-serif'] },
+        animation: {
+          'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+          'pop-in': 'popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        },
+        keyframes: {
+          fadeInUp: {
+            '0%': { opacity: 0, transform: 'translateY(20px)' },
+            '100%': { opacity: 1, transform: 'translateY(0)' },
+          },
+          popIn: {
+            '0%': { opacity: 0, transform: 'scale(0.95)' },
+            '100%': { opacity: 1, transform: 'scale(1)' },
+          }
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  :root {
+    --bg-color-1: #000000;
+    --bg-color-2: #141414;
+    --custom-bg: none;
+  }
+  
+  body {
+    font-family: 'Outfit', sans-serif;
+    overscroll-behavior-y: none;
+    color: white;
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+    background-color: var(--bg-color-2);
+  }
+
+  #app-background {
+    position: fixed; inset: 0; z-index: -3;
+    background: radial-gradient(circle at top, var(--bg-color-2), var(--bg-color-1));
+    background-image: var(--custom-bg);
+    background-size: cover; background-position: center;
+    transition: all 0.8s ease;
+  }
+  
+  /* Arrière-plan NET : Aucun effet de flou (Glassmorphism), juste un très léger voile pour le texte */
+  #app-overlay {
+    position: fixed; inset: 0; z-index: -1;
+    background: rgba(0, 0, 0, 0.35); 
+  }
+
+  /* Effet Verre Dépoli UNIQUEMENT pour les menus et boutons */
+  .glass-effect {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Thèmes Premium */
+  body.t-cinematic { --bg-color-1: #000000; --bg-color-2: #141414; }
+  body.t-slate { --bg-color-1: #0F172A; --bg-color-2: #020617; }
+  body.t-ruby { --bg-color-1: #3f000f; --bg-color-2: #1a0006; }
+  body.t-ocean { --bg-color-1: #082f49; --bg-color-2: #02121d; }
+
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+  .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  .tags-container {
+    display: flex; overflow-x: auto; gap: 8px; padding: 0 24px 12px 24px;
+    scroll-snap-type: x mandatory;
+  }
+  .tag-pill {
+    white-space: nowrap; padding: 6px 16px; border-radius: 99px; font-size: 13px; font-weight: 600;
+    color: #A3A3A3; transition: all 0.2s ease; scroll-snap-align: start;
+  }
+  .tag-pill.active {
+    background: white; color: black; border-color: white;
+  }
+
+  .hero-gradient { background: linear-gradient(to top, rgba(15,15,15,1) 0%, rgba(15,15,15,0.4) 50%, transparent 100%); }
+  .card-gradient { background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 60%); }
+
+  /* Navigation Streaming Style */
+  .nav-bar {
+    background: rgba(10, 10, 10, 0.7); 
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    display: flex; justify-content: space-around; padding: 12px 16px 24px 16px;
+  }
+  .nav-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    color: #737373; font-size: 10px; font-weight: 500; transition: color 0.3s ease; width: 65px;
+  }
+  .nav-btn.active { color: white; }
+  .nav-btn i { transition: transform 0.2s ease; }
+  .nav-btn:active i { transform: scale(0.8); }
+
+  /* Modales Premium */
+  .modal-enter { opacity: 0; transform: translateY(100%); }
+  .modal-enter-active { opacity: 1; transform: translateY(0); transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .modal-leave-active { opacity: 0; transform: translateY(100%); transition: all 0.3s ease-in; }
+
+  /* Header Scroll Effect */
+  header.scrolled { 
+      background: rgba(20, 20, 20, 0.6); 
+      backdrop-filter: blur(20px); 
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.1); 
+  }
+
+  /* Masonry Grid (Pinterest Style) pour le Studio uniquement */
+  .masonry-grid {
+      column-count: 2;
+      column-gap: 12px;
+  }
+  .masonry-item {
+      break-inside: avoid;
+      margin-bottom: 12px;
+  }
+</style>
+</head>
+<body class="t-cinematic h-screen w-screen overflow-hidden flex flex-col relative text-white">
+
+<!-- Background Video (Tourne en boucle sans son) -->
+<video id="bg-video" autoplay loop muted playsinline class="fixed inset-0 w-full h-full object-cover -z-[2] hidden"></video>
+
+<!-- Backgrounds Classiques (Couleur ou Photo) -->
+<div id="app-background"></div>
+<div id="app-overlay"></div>
+
+<!-- Inputs globaux cachés -->
+<input type="file" accept="image/*" class="hidden" id="global-cover-upload" onchange="handleCoverUpload(this)">
+<input type="file" accept="image/*,video/*" class="hidden" id="hero-media-upload" onchange="handleHeroMediaUpload(this)">
+
+<!-- En-tête Fixe Transparent -->
+<header id="main-header" class="fixed top-0 left-0 w-full pt-12 pb-3 px-6 flex justify-between items-center z-40 transition-all duration-300">
+  <div class="flex items-center gap-2">
+    <div class="w-8 h-8 rounded bg-brand-accent flex items-center justify-center font-black text-xl tracking-tighter shadow-[0_0_15px_rgba(229,9,20,0.5)]">T</div>
+    <h1 id="view-title" class="text-xl font-bold tracking-tight text-white drop-shadow-md">Accueil</h1>
+  </div>
+  <div class="flex gap-3">
+    <button onclick="triggerHaptic(); openSearch()" class="glass-effect rounded-full w-10 h-10 flex items-center justify-center active:scale-95 transition-transform">
+      <i data-lucide="search" class="w-5 h-5"></i>
+    </button>
+    <button onclick="triggerHaptic(); openModal('addModal')" class="glass-effect rounded-full w-10 h-10 flex items-center justify-center active:scale-95 transition-transform">
+      <i data-lucide="plus" class="w-5 h-5"></i>
+    </button>
+  </div>
+</header>
+
+<!-- Notification Toast -->
+<div id="toast" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] transition-all duration-300 transform -translate-y-[150%] opacity-0 pointer-events-none">
+    <div class="glass-effect text-white px-6 py-3 rounded-full font-bold shadow-2xl flex items-center gap-3 border-green-400/30">
+        <i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i>
+        <span id="toast-message">Action réussie</span>
+    </div>
+</div>
+
+<!-- Zone Principale défilante -->
+<main class="flex-1 w-full overflow-y-auto overflow-x-hidden hide-scrollbar pb-32 z-10 relative scroll-smooth" id="main-scroll" onscroll="handleScroll()">
+  
+  <!-- VUE 1 : ACCUEIL -->
+  <div id="view-home" class="view-section w-full flex flex-col transition-opacity duration-300">
+      
+      <!-- HERO SECTION (Bannière Flottante Arrondie avec "À LA UNE") -->
+      <div id="hero-section" class="relative mx-5 mt-[100px] mb-6 h-[60vh] flex flex-col justify-end rounded-[32px] overflow-hidden shadow-2xl border border-white/10">
+          <div id="hero-bg" class="absolute inset-0 bg-cover bg-center transition-opacity duration-1000" style="background-image: url('https://images.unsplash.com/photo-1574267432553-4b4628081524?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80');"></div>
+          <video id="hero-video" autoplay loop muted playsinline class="absolute inset-0 w-full h-full object-cover hidden"></video>
+          
+          <div class="absolute inset-0 hero-gradient pointer-events-none"></div>
+          
+          <div id="hero-content" class="relative z-10 px-5 pb-8 text-center flex flex-col items-center">
+              <span class="text-[10px] font-bold tracking-[0.2em] uppercase text-gray-300 mb-2 flex items-center gap-1 drop-shadow-md">
+                  <i data-lucide="sparkles" class="w-3 h-3 text-brand-accent"></i> À LA UNE
+              </span>
+              <h2 id="hero-title" class="text-3xl font-black mb-6 tracking-tight drop-shadow-2xl text-balance">Titre de la Vidéo</h2>
+              
+              <div class="flex gap-3 w-full justify-center mt-2 max-w-[340px]">
+                  <button id="hero-btn-play" class="flex-[2] py-3.5 rounded-2xl bg-white text-black font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-xl">
+                      <i data-lucide="play" class="w-5 h-5 fill-black"></i> Regarder
+                  </button>
+                  <button id="hero-btn-focus" class="flex-1 py-3.5 rounded-2xl glass-effect text-white font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                      <i data-lucide="focus" class="w-5 h-5"></i> Focus
+                  </button>
+              </div>
+
+              <!-- Indicateurs de carrousel (3 recommandations) -->
+              <div class="flex gap-2 mt-6" id="hero-indicators">
+                  <!-- Injecté via JS -->
+              </div>
+          </div>
+      </div>
+
+      <!-- Barre de Tags -->
+      <div class="tags-container hide-scrollbar mt-2 mb-2" id="tags-bar">
+        <button onclick="setFilter('Tous')" class="tag-pill glass-effect active" id="tag-Tous">Tout</button>
+        <button onclick="setFilter('Humour')" class="tag-pill glass-effect" id="tag-Humour">Humour</button>
+        <button onclick="setFilter('Storytime')" class="tag-pill glass-effect" id="tag-Storytime">Storytime</button>
+        <button onclick="setFilter('Tendance')" class="tag-pill glass-effect" id="tag-Tendance">Tendance</button>
+        <button onclick="setFilter('Beauté')" class="tag-pill glass-effect" id="tag-Beauté">Beauté</button>
+      </div>
+
+      <!-- ROW 1 : Continuer à regarder (CARROUSEL HORIZONTAL) -->
+      <div class="mb-8 mt-2" id="row-continue">
+          <h3 class="px-6 text-[16px] font-bold text-white mb-3 tracking-wide drop-shadow-md">Continuer à regarder</h3>
+          <div class="flex overflow-x-auto gap-3 px-6 pb-4 hide-scrollbar snap-x" id="continue-grid">
+              <!-- Injecté via JS -->
+          </div>
+      </div>
+
+      <!-- ROW 2 : Ma Liste (GRILLE 2 COLONNES) -->
+      <div class="mb-10 px-6" id="row-mylist">
+          <h3 class="text-[16px] font-bold text-white mb-3 tracking-wide drop-shadow-md">Ma Liste</h3>
+          <div class="grid grid-cols-2 gap-3 pb-4" id="mylist-grid">
+              <!-- Injecté via JS -->
+          </div>
+      </div>
+  </div>
+
+  <!-- VUE 2 : TERMINÉES (GRILLE 2 COLONNES) -->
+  <div id="view-done" class="view-section w-full hidden transition-opacity duration-300 pt-28 px-6 pb-10">
+      <h2 class="text-2xl font-bold mb-6">Vidéos Réalisées</h2>
+      <div id="done-grid" class="grid grid-cols-2 gap-3 w-full">
+          <!-- Injecté via JS -->
+      </div>
+  </div>
+
+  <!-- VUE 3 : STUDIO & GALERIE (Masonry Pinterest Style) -->
+  <div id="view-studio" class="view-section w-full hidden transition-opacity duration-300 pt-28 px-6 pb-8">
+      
+      <!-- Graphique de Progression Cinematic -->
+      <div class="glass-effect rounded-[32px] p-6 shadow-2xl mb-10 relative overflow-hidden flex items-center justify-between">
+          <div class="absolute top-0 right-0 w-32 h-32 bg-brand-accent/20 rounded-full blur-3xl"></div>
+          
+          <div class="relative z-10">
+              <p class="text-sm text-gray-300 font-medium mb-1">Progression Globale</p>
+              <div class="flex items-baseline gap-2">
+                  <p class="text-4xl font-black text-white" id="stat-done">0</p>
+                  <p class="text-gray-400 font-medium">/ <span id="stat-total">17</span></p>
+              </div>
+          </div>
+          <div class="relative w-[90px] h-[90px] z-10">
+            <svg viewBox="0 0 36 36" class="w-full h-full">
+              <path fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              <path id="progress-circle" fill="none" stroke="#E50914" stroke-width="3" stroke-linecap="round" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" class="transition-all duration-1000 ease-out" />
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center text-sm font-bold" id="progress-text">0%</div>
+          </div>
+      </div>
+
+      <!-- Galerie Mes Réalisations (Masonry) -->
+      <div>
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-lg font-bold text-white tracking-wide drop-shadow-md">Mes Réalisations</h2>
+            <label onclick="triggerHaptic()" class="px-4 py-2 rounded-full glass-effect text-sm font-bold flex items-center gap-2 cursor-pointer active:scale-95 transition-transform hover:bg-white/10">
+                <i data-lucide="plus" class="w-4 h-4"></i> Ajouter
+                <input type="file" accept="image/*,video/*" class="hidden" onchange="uploadToGallery(this)">
+            </label>
+        </div>
+        
+        <div id="gallery-grid" class="masonry-grid w-full">
+            <!-- Injecté via JS -->
+        </div>
+      </div>
+  </div>
+
+  <!-- VUE 4 : PARAMÈTRES (OPTIONS) -->
+  <div id="view-settings" class="view-section w-full hidden transition-opacity duration-300 pt-28 px-6 pb-8">
+      <h2 class="text-2xl font-bold mb-8 drop-shadow-md">Options</h2>
+      
+      <div class="space-y-8">
+          
+          <!-- Bannière d'Accueil dans les Options ! -->
+          <div>
+              <p class="text-xs text-gray-400 mb-3 font-bold uppercase tracking-widest pl-2">Bannière d'Accueil</p>
+              <div class="glass-effect rounded-[32px] p-5">
+                  <button onclick="triggerHaptic(); document.getElementById('hero-media-upload').click()" class="w-full py-4 rounded-2xl bg-white/10 text-white font-bold flex items-center justify-center gap-2 hover:bg-white/20 transition-colors shadow-lg active:scale-95">
+                      <i data-lucide="image-plus" class="w-5 h-5"></i> Personnaliser la bannière
+                  </button>
+                  <p class="text-[10px] text-gray-400 text-center mt-3">Remplacera les recommandations de l'accueil.</p>
+              </div>
+          </div>
+
+          <!-- Thèmes de l'Application -->
+          <div>
+              <p class="text-xs text-gray-400 mb-3 font-bold uppercase tracking-widest pl-2">Arrière-plan global</p>
+              <div class="glass-effect rounded-[32px] p-5">
+                  <div class="flex flex-wrap gap-4 justify-between">
+                      <button onclick="triggerHaptic(); setTheme('t-cinematic')" class="w-12 h-12 rounded-full bg-[#141414] border-2 border-brand-accent theme-btn transition-transform shadow-lg" data-theme="t-cinematic"></button>
+                      <button onclick="triggerHaptic(); setTheme('t-slate')" class="w-12 h-12 rounded-full bg-slate-900 border-2 border-transparent theme-btn transition-transform shadow-lg" data-theme="t-slate"></button>
+                      <button onclick="triggerHaptic(); setTheme('t-ocean')" class="w-12 h-12 rounded-full bg-sky-950 border-2 border-transparent theme-btn transition-transform shadow-lg" data-theme="t-ocean"></button>
+                      
+                      <!-- Upload Photo/Vidéo Fond -->
+                      <label onclick="triggerHaptic()" class="w-12 h-12 rounded-full border-2 border-dashed border-gray-400 flex items-center justify-center cursor-pointer theme-btn bg-white/5 transition-transform" data-theme="t-custom" title="Fond d'écran personnalisé">
+                          <i data-lucide="image-plus" class="w-5 h-5 text-white"></i>
+                          <input type="file" accept="image/*,video/*" class="hidden" onchange="uploadCustomBg(this)">
+                      </label>
+                  </div>
+              </div>
+          </div>
+
+          <!-- Reset -->
+          <div class="pt-6">
+              <button onclick="triggerHaptic(); confirmReset()" class="w-full py-4 rounded-2xl glass-effect text-red-400 font-bold border-red-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-red-500/10">
+                  <i data-lucide="alert-triangle" class="w-5 h-5"></i> Tout réinitialiser
+              </button>
+          </div>
+      </div>
+  </div>
+</main>
+
+<!-- Barre de Navigation Streaming Style -->
+<div class="fixed bottom-0 left-0 w-full z-50">
+  <nav class="nav-bar pb-[env(safe-area-inset-bottom,20px)]">
+    <button onclick="triggerHaptic(); switchView('home')" id="nav-home" class="nav-btn active">
+      <i data-lucide="play-square" class="w-6 h-6"></i><span>Accueil</span>
+    </button>
+    <button onclick="triggerHaptic(); switchView('done')" id="nav-done" class="nav-btn">
+      <i data-lucide="check-square" class="w-6 h-6"></i><span>Fini</span>
+    </button>
+    <button onclick="triggerHaptic(); switchView('studio')" id="nav-studio" class="nav-btn">
+      <i data-lucide="pie-chart" class="w-6 h-6"></i><span>Studio</span>
+    </button>
+    <button onclick="triggerHaptic(); switchView('settings')" id="nav-settings" class="nav-btn">
+      <i data-lucide="sliders-horizontal" class="w-6 h-6"></i><span>Options</span>
+    </button>
+  </nav>
+</div>
+
+<!-- RECHERCHE PLEIN ÉCRAN (GRILLE 2 COLONNES) -->
+<div id="searchModal" class="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] hidden flex-col transition-opacity duration-300 opacity-0">
+    <div class="flex items-center px-4 pt-12 pb-4 border-b border-white/10 glass-effect">
+        <div class="relative flex-1">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
+            <input type="text" id="searchInput" placeholder="Chercher une vidéo, un tag..." 
+                   class="w-full bg-white/10 rounded-full border-none py-3 pl-10 pr-10 text-white font-medium focus:outline-none focus:ring-1 focus:ring-brand-accent transition-all"
+                   oninput="handleSearch(this.value)">
+            <button id="clearSearchBtn" onclick="triggerHaptic(); clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400 hidden items-center justify-center bg-white/20 rounded-full active:scale-90">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <button onclick="triggerHaptic(); closeSearch()" class="ml-4 text-white font-bold active:opacity-70">Annuler</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-6" id="search-results">
+        <p class="text-gray-400 font-bold mb-4 uppercase tracking-wider text-xs">Résultats</p>
+        <div id="search-grid" class="grid grid-cols-2 gap-3">
+            <!-- Injecté via JS -->
+        </div>
+    </div>
+</div>
+
+<!-- Modale d'ajout d'idée -->
+<div id="addModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] hidden flex-col items-center justify-center p-4">
+  <div class="glass-effect rounded-3xl w-full max-w-[340px] p-7 shadow-2xl modal-content">
+    <h2 class="text-2xl font-bold mb-6 text-white text-center drop-shadow-md">Nouvelle Idée</h2>
+    
+    <div class="space-y-4 mb-8">
+      <input type="text" id="newTitle" placeholder="Titre de l'idée" class="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-5 text-white focus:outline-none focus:border-white transition-colors">
+      <input type="url" id="newUrl" placeholder="Lien (TikTok...)" class="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-5 text-white focus:outline-none focus:border-white transition-colors">
+      <select id="newTag" class="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-5 text-white focus:outline-none focus:border-white appearance-none">
+          <option value="Tendance">Tendance</option>
+          <option value="Humour">Humour</option>
+          <option value="Storytime">Storytime</option>
+          <option value="Beauté">Beauté</option>
+          <option value="Autre">Autre</option>
+      </select>
+    </div>
+
+    <div class="flex gap-3">
+        <button onclick="triggerHaptic(); closeModal('addModal')" class="flex-1 py-4 rounded-2xl bg-white/10 text-white font-bold active:scale-95 transition-transform">Annuler</button>
+        <button onclick="triggerHaptic(); addVideoIdea()" class="flex-1 py-4 rounded-2xl bg-white text-black font-bold active:scale-95 transition-transform hover:bg-gray-200">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modale de Renommage (Pinterest Style) -->
+<div id="renameModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[150] hidden flex-col items-center justify-center p-4" onclick="closeModal('renameModal')">
+    <div class="glass-effect rounded-3xl w-full max-w-[300px] p-6 shadow-2xl modal-content text-center" onclick="event.stopPropagation()">
+        <h3 class="text-xl font-bold mb-4 text-white">Renommer</h3>
+        <input type="text" id="renameInput" class="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white text-center font-medium focus:outline-none focus:border-white">
+        <div class="flex gap-3">
+            <button onclick="triggerHaptic(); closeModal('renameModal')" class="flex-1 py-3.5 rounded-2xl bg-white/10 font-bold active:scale-95">Annuler</button>
+            <button onclick="saveRename()" class="flex-1 py-3.5 rounded-2xl bg-white text-black font-bold active:scale-95">Valider</button>
+        </div>
+    </div>
+</div>
+
+<!-- Mode FOCUS (Immersif) -->
+<div id="focusModal" class="fixed inset-0 bg-black z-[400] hidden flex-col items-center justify-center p-6">
+    <button onclick="triggerHaptic(); closeFocus()" class="absolute top-12 right-6 w-12 h-12 flex items-center justify-center bg-white/10 rounded-full text-white z-10 active:scale-90">
+        <i data-lucide="x" class="w-5 h-5"></i>
+    </button>
+    
+    <div class="text-center w-full max-w-sm">
+        <h3 id="focus-title" class="text-2xl font-bold text-white mb-8">Titre</h3>
+        <div class="text-7xl font-black text-brand-accent tracking-tighter mb-12 tabular-nums drop-shadow-[0_0_20px_rgba(229,9,20,0.5)]" id="focus-timer">15:00</div>
+        
+        <div class="flex flex-col gap-4">
+            <button onclick="triggerHaptic(); startFocusTimer()" id="btn-start-focus" class="w-full py-4 rounded-full bg-white text-black font-bold text-lg active:scale-95 transition-transform">Commencer</button>
+            <a id="focus-link" href="#" target="_blank" class="w-full py-4 rounded-full border border-white/20 text-white font-bold active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-white/5">
+                <i data-lucide="play" class="w-5 h-5 fill-white"></i> Ouvrir TikTok
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Modale Confirmation Suppression -->
+<div id="confirmModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-[200] hidden flex-col items-center justify-center p-4">
+    <div class="glass-effect rounded-3xl w-full max-w-[300px] p-6 shadow-2xl modal-content text-center">
+        <div class="w-14 h-14 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="alert-triangle" class="w-6 h-6 text-red-500"></i>
+        </div>
+        <h3 class="text-lg font-bold mb-2 text-white" id="confirmTitle">Êtes-vous sûr ?</h3>
+        <p class="text-sm text-gray-400 mb-6" id="confirmMessage">Cette action est irréversible.</p>
+        <div class="flex gap-3">
+            <button onclick="triggerHaptic(); closeModal('confirmModal')" class="flex-1 py-3.5 rounded-2xl bg-white/10 font-bold active:scale-95">Annuler</button>
+            <button id="confirmBtn" class="flex-1 py-3.5 rounded-2xl bg-brand-accent text-white font-bold active:scale-95 shadow-lg shadow-red-500/30">Confirmer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Lecteur Média Plein Écran (MOTEUR INTOCUABLE) -->
+<div id="mediaModal" class="fixed inset-0 bg-black z-[300] hidden flex-col items-center justify-center">
+    <button onclick="triggerHaptic(); closeMedia()" class="absolute top-12 right-6 w-12 h-12 flex items-center justify-center bg-black/50 backdrop-blur rounded-full text-white z-10 active:scale-90 border border-white/20">
+        <i data-lucide="x" class="w-6 h-6"></i>
+    </button>
+    <img id="mediaImg" class="max-w-full max-h-screen hidden object-contain">
+    <video id="mediaVid" controls playsinline class="max-w-full max-h-screen hidden bg-black"></video>
+</div>
+
+<script>
+// --- TES 17 PROJETS SAUVEGARDÉS À VIE ICI ---
+const baseVideos = [
+  {id:1, title:"Maman et son fils", url:"https://vm.tiktok.com/ZN8Mrj2Ch/", date: 1700000017000, tag: "Storytime"},
+  {id:2, title:"Défaut physique", url:"https://vm.tiktok.com/ZN8MULhY2/", date: 1700000016000, tag: "Humour"},
+  {id:3, title:"Kidnappeur", url:"https://vm.tiktok.com/ZN8My7Rm8/", date: 1700000015000, tag: "Storytime"},
+  {id:4, title:"Vilaine bouche", url:"https://vm.tiktok.com/ZN8MyogKF/", date: 1700000014000, tag: "Humour"},
+  {id:5, title:"Livreur bizarre", url:"https://vm.tiktok.com/ZN8MypvR/", date: 1700000013000, tag: "Storytime"},
+  {id:6, title:"Il dort en classe ?", url:"https://vm.tiktok.com/ZN8MyXucq/", date: 1700000012000, tag: "Humour"},
+  {id:7, title:"Fille jalouse", url:"https://vm.tiktok.com/ZN8MfqDMK/", date: 1700000011000, tag: "Tendance"},
+  {id:8, title:"Mère indigne", url:"https://vm.tiktok.com/ZN8MfxB6p/", date: 1700000010000, tag: "Storytime"},
+  {id:9, title:"Novelas", url:"https://vm.tiktok.com/ZN8Mfa8qo/", date: 1700000009000, tag: "Tendance"},
+  {id:10, title:"Fille au toilette", url:"https://vm.tiktok.com/ZN8MfcHXY/", date: 1700000008000, tag: "Humour"},
+  {id:11, title:"La caf", url:"https://vm.tiktok.com/ZN8MPhASS/", date: 1700000007000, tag: "Storytime"},
+  {id:12, title:"Le boucher de l'enfer", url:"https://vm.tiktok.com/ZN8MPDMFd/", date: 1700000006000, tag: "Humour"},
+  {id:13, title:"Grosse pizza", url:"https://vm.tiktok.com/ZN8MPLF5C/", date: 1700000005000, tag: "Tendance"},
+  {id:14, title:"Influenceuse menteuse", url:"https://vm.tiktok.com/ZN8MPjjTY/", date: 1700000004000, tag: "Beauté"},
+  {id:15, title:"Un gros", url:"https://vm.tiktok.com/ZN8MPMdBs/", date: 1700000003000, tag: "Humour"},
+  {id:16, title:"Foyer difficile", url:"https://vm.tiktok.com/ZN8MPktTW/", date: 1700000002000, tag: "Storytime"},
+  {id:17, title:"Enfant maltraité", url:"https://vm.tiktok.com/ZN8Mfoajo/", date: 1700000001000, tag: "Storytime"}
+];
+
+const APP_KEY = "nflx_teevi_v9"; // Mise à jour de clé 
+
+function loadData() {
+    try { 
+        const data = JSON.parse(localStorage.getItem(APP_KEY)); 
+        if (data && data.videos && data.videos.length >= 17) return data; 
+    } catch(e) {}
+    
+    // SCRIPT DE RÉCUPÉRATION POUR NE RIEN PERDRE
+    try {
+        const oldData = JSON.parse(localStorage.getItem("nflx_teevi_v8")) || JSON.parse(localStorage.getItem("nflx_teevi_v6")) || JSON.parse(localStorage.getItem("teevi_db_pro_v3"));
+        if (oldData) {
+            oldData.videos = [...baseVideos]; 
+            oldData.settings.theme = 't-cinematic'; 
+            return oldData;
+        }
+    } catch(e) {}
+
+    return { videos: [...baseVideos], state: {}, settings: { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null }, gallery: [] };
+}
+function saveData() { try { localStorage.setItem(APP_KEY, JSON.stringify(appData)); } catch(e) { showToast("Mémoire saturée !"); } }
+
+let appData = loadData();
+let currentView = 'home';
+let currentMediaBlobUrl = null; 
+let currentBgBlobUrl = null;
+let currentHeroBlobUrl = null;
+let currentCoverId = null; 
+let itemToRename = null;
+
+// Variables pour les carrousels
+let carouselInterval = null;
+let heroInterval = null;
+let currentHeroIndex = 0;
+let heroVideos = [];
+
+// Header Scroll
+function handleScroll() {
+    const header = document.getElementById('main-header');
+    const scrollY = document.getElementById('main-scroll').scrollTop;
+    if (scrollY > 50) header.classList.add('scrolled');
+    else header.classList.remove('scrolled');
+}
+
+function triggerHaptic(ms = 30) { if (navigator.vibrate) navigator.vibrate(ms); }
+
+window.onload = () => { applyTheme(appData.settings.theme); updateFilterUI(); renderApp(); };
+
+// --- NAVIGATION ---
+function switchView(viewName) {
+    currentView = viewName;
+    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(`nav-${viewName}`).classList.add('active');
+    document.querySelectorAll('.view-section').forEach(el => { el.classList.add('hidden'); el.classList.remove('opacity-100'); });
+    
+    const activeEl = document.getElementById(`view-${viewName}`);
+    activeEl.classList.remove('hidden');
+    setTimeout(() => activeEl.classList.add('opacity-100'), 10);
+    
+    document.getElementById('main-scroll').scrollTo({top: 0, behavior: 'smooth'});
+    const titles = { 'home': 'Accueil', 'done': 'Fini', 'studio': 'Studio', 'settings': 'Options' };
+    document.getElementById('view-title').textContent = titles[viewName];
+    renderApp();
+}
+
+function openModal(id) {
+  const m = document.getElementById(id); const c = m.querySelector('.modal-content');
+  m.classList.remove('hidden'); m.classList.add('flex');
+  c.classList.add('modal-enter');
+  requestAnimationFrame(() => { c.classList.remove('modal-enter'); c.classList.add('modal-enter-active'); });
+}
+function closeModal(id) {
+  const m = document.getElementById(id); const c = m.querySelector('.modal-content');
+  c.classList.remove('modal-enter-active'); c.classList.add('modal-leave-active');
+  setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); c.classList.remove('modal-leave-active'); }, 300);
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('toast'); document.getElementById('toast-message').textContent = msg;
+    toast.classList.remove('-translate-y-[150%]', 'opacity-0'); toast.classList.add('translate-y-4', 'opacity-100');
+    setTimeout(() => { toast.classList.add('-translate-y-[150%]', 'opacity-0'); toast.classList.remove('translate-y-4', 'opacity-100'); }, 3000);
+}
+
+let confirmAction = null;
+function openConfirm(title, message, action) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    confirmAction = action; openModal('confirmModal');
+}
+document.getElementById('confirmBtn').addEventListener('click', () => { if(confirmAction) confirmAction(); closeModal('confirmModal'); });
+
+// --- THÈMES ET BANNIÈRE ---
+async function setTheme(theme) { appData.settings.theme = theme; saveData(); await applyTheme(theme); }
+async function applyTheme(theme) {
+    document.body.className = `t-cinematic h-screen w-screen overflow-hidden flex flex-col relative text-white ${theme}`;
+    const bgVideo = document.getElementById('bg-video'); bgVideo.classList.add('hidden'); bgVideo.pause();
+    if (currentBgBlobUrl) { URL.revokeObjectURL(currentBgBlobUrl); currentBgBlobUrl = null; }
+    
+    document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.toggle('border-brand-accent', btn.dataset.theme === theme));
+    
+    if (theme === 't-custom') {
+        if(appData.settings.bgType === 'video' && window.idbKeyval) {
+            try { const vidFile = await idbKeyval.get('bg-video'); if(vidFile) { currentBgBlobUrl = URL.createObjectURL(vidFile); bgVideo.src = currentBgBlobUrl; bgVideo.classList.remove('hidden'); bgVideo.play().catch(()=>{}); } } catch(e) {}
+        } else { document.documentElement.style.setProperty('--custom-bg', `url('${appData.settings.customBg}')`); }
+    } else { document.documentElement.style.setProperty('--custom-bg', 'none'); }
+}
+
+async function uploadCustomBg(input) {
+    const file = input.files[0]; if(!file) return; showToast("Installation...");
+    if(file.type.startsWith('video/') && window.idbKeyval) {
+        try { await idbKeyval.set('bg-video', file); appData.settings.bgType = 'video'; setTheme('t-custom'); showToast("Fond vidéo appliqué !"); } catch(e) { showToast("Mémoire pleine"); }
+    } else {
+        const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload = () => { const cvs = document.createElement('canvas'); let w = img.width, h = img.height; if(w>800) { h=h*(800/w); w=800; } cvs.width=w; cvs.height=h; cvs.getContext('2d').drawImage(img,0,0,w,h); appData.settings.customBg = cvs.toDataURL('image/jpeg', 0.6); appData.settings.bgType = 'image'; setTheme('t-custom'); showToast("Fond appliqué !"); }; img.src = e.target.result; }; r.readAsDataURL(file);
+    } input.value = '';
+}
+
+async function handleHeroMediaUpload(input) {
+    const file = input.files[0]; if(!file) return; showToast("Mise à jour bannière...");
+    if(file.type.startsWith('video/') && window.idbKeyval) {
+        try { await idbKeyval.set('hero-video', file); appData.settings.heroType = 'video'; saveData(); renderApp(); showToast("Bannière vidéo forcée !"); } catch(e) { showToast("Mémoire pleine"); }
+    } else {
+        const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload = () => { const cvs = document.createElement('canvas'); let w = img.width, h = img.height; if(w>1000) { h=h*(1000/w); w=1000; } cvs.width=w; cvs.height=h; cvs.getContext('2d').drawImage(img,0,0,w,h); appData.settings.heroImg = cvs.toDataURL('image/jpeg', 0.7); appData.settings.heroType = 'image'; saveData(); renderApp(); showToast("Bannière forcée !"); }; img.src = e.target.result; }; r.readAsDataURL(file);
+    } input.value = '';
+}
+
+// CARROUSEL HERO (Recommandations du jour)
+async function startHeroCarousel() {
+    clearInterval(heroInterval);
+    heroVideos = getSortedVideos(true).slice(0, 3);
+    if (heroVideos.length === 0) return;
+    
+    const bgDiv = document.getElementById('hero-bg'); const vidEl = document.getElementById('hero-video');
+    vidEl.pause(); vidEl.classList.add('hidden'); bgDiv.classList.remove('hidden');
+    if (currentHeroBlobUrl) { URL.revokeObjectURL(currentHeroBlobUrl); currentHeroBlobUrl = null; }
+
+    if(appData.settings.heroType === 'video' && window.idbKeyval) {
+        try { const file = await idbKeyval.get('hero-video'); if(file) { currentHeroBlobUrl = URL.createObjectURL(file); vidEl.src = currentHeroBlobUrl; bgDiv.classList.add('hidden'); vidEl.classList.remove('hidden'); vidEl.play().catch(()=>{}); } } catch(e) {}
+    } else if (appData.settings.heroType === 'image' && appData.settings.heroImg) {
+        bgDiv.style.backgroundImage = `url('${appData.settings.heroImg}')`;
+    }
+
+    updateHeroUI();
+    
+    if (heroVideos.length > 1) {
+        heroInterval = setInterval(() => {
+            currentHeroIndex = (currentHeroIndex + 1) % heroVideos.length;
+            updateHeroUI();
+        }, 6000); 
+    }
+}
+
+function updateHeroUI() {
+    if (heroVideos.length === 0) return;
+    const v = heroVideos[currentHeroIndex];
+    
+    const contentDiv = document.getElementById('hero-content');
+    contentDiv.classList.remove('animate-fade-in-up');
+    void contentDiv.offsetWidth; 
+    contentDiv.classList.add('animate-fade-in-up');
+
+    document.getElementById('hero-title').textContent = v.title;
+    document.getElementById('hero-btn-play').onclick = () => window.open(v.url, '_blank');
+    document.getElementById('hero-btn-focus').onclick = () => openFocus(v.id);
+
+    const indicators = document.getElementById('hero-indicators');
+    if(indicators) {
+        indicators.innerHTML = heroVideos.map((_, i) => 
+            `<div class="${i === currentHeroIndex ? 'w-4 h-2 bg-brand-accent' : 'w-2 h-2 bg-white/30'} rounded-full transition-all duration-300"></div>`
+        ).join('');
+    }
+
+    if (appData.settings.heroType === 'none') {
+         const bgDiv = document.getElementById('hero-bg');
+         const fallback = appData.state[v.id]?.photo || 'https://images.unsplash.com/photo-1574267432553-4b4628081524?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80';
+         bgDiv.style.opacity = 0;
+         setTimeout(() => {
+             bgDiv.style.backgroundImage = `url('${fallback}')`;
+             bgDiv.style.opacity = 1;
+         }, 300);
+    }
+}
+
+// Couvertures manuelles des cartes
+function triggerCoverUpload(event, id) { if(event) event.stopPropagation(); triggerHaptic(); currentCoverId = id; document.getElementById('global-cover-upload').click(); }
+function handleCoverUpload(input) {
+    const file = input.files[0]; if(!file || !currentCoverId) return;
+    const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload = () => { const cvs = document.createElement('canvas'); let w = img.width, h = img.height; if(w>600) { h=h*(600/w); w=600; } cvs.width=w; cvs.height=h; cvs.getContext('2d').drawImage(img,0,0,w,h); appData.state[currentCoverId] = appData.state[currentCoverId] || {}; appData.state[currentCoverId].photo = cvs.toDataURL('image/jpeg', 0.6); saveData(); renderApp(); showToast("Affiche mise à jour !"); }; img.src = e.target.result; }; r.readAsDataURL(file); input.value = '';
+}
+
+// --- RECHERCHE ET FILTRES ---
+function openSearch() { const modal = document.getElementById('searchModal'); modal.classList.remove('hidden'); modal.classList.add('flex'); setTimeout(() => { modal.classList.remove('opacity-0'); modal.classList.add('opacity-100'); document.getElementById('searchInput').focus(); }, 10); handleSearch(''); }
+function closeSearch() { const modal = document.getElementById('searchModal'); modal.classList.remove('opacity-100'); modal.classList.add('opacity-0'); setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 300); }
+function handleSearch(val) {
+    const query = val.toLowerCase().trim(); const clearBtn = document.getElementById('clearSearchBtn'); clearBtn.classList.toggle('hidden', query.length === 0); clearBtn.classList.toggle('flex', query.length > 0);
+    const grid = document.getElementById('search-grid');
+    let results = appData.videos.filter(v => v.title.toLowerCase().includes(query) || (v.tag && v.tag.toLowerCase().includes(query)));
+    if(!results.length) { grid.innerHTML = `<p class="col-span-2 text-gray-400 text-sm py-4">Aucun résultat trouvé.</p>`; return; }
+    grid.innerHTML = results.map(v => renderCardHTML(v, appData.state[v.id]?.done, false, true)).join(''); lucide.createIcons();
+}
+function clearSearch() { document.getElementById('searchInput').value = ''; handleSearch(''); }
+
+function setFilter(tag) { triggerHaptic(); appData.settings.activeFilter = tag; saveData(); updateFilterUI(); renderApp(); }
+function updateFilterUI() { document.querySelectorAll('.tag-pill').forEach(btn => btn.classList.remove('active', 'bg-white', 'text-black')); const activeBtn = document.getElementById(`tag-${appData.settings.activeFilter}`); if (activeBtn) { activeBtn.classList.add('active', 'bg-white', 'text-black'); activeBtn.classList.remove('glass-effect'); } }
+
+// --- MOTEUR VIDÉO iOS HACKÉ & SÉCURISÉ ---
+async function uploadToGallery(input) {
+    const file = input.files[0]; if(!file) return;
+    const uniqueId = Date.now(); showToast("Sauvegarde...");
+    
+    if(file.type.startsWith('image/')) {
+        const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload = () => { const cvs = document.createElement('canvas'); let w = img.width, h = img.height; if(w>800) { h=h*(800/w); w=800; } cvs.width=w; cvs.height=h; cvs.getContext('2d').drawImage(img,0,0,w,h); saveGalleryItem(uniqueId, cvs.toDataURL('image/jpeg', 0.6), false); showToast("Photo sauvegardée !"); }; img.src = e.target.result; }; r.readAsDataURL(file);
+    } else if(file.type.startsWith('video/')) {
+        if(!window.idbKeyval) { showToast("Erreur système."); return; }
+        try {
+            await idbKeyval.set(`gal-vid-${uniqueId}`, file);
+            const blobUrl = URL.createObjectURL(file);
+            const video = document.createElement('video'); 
+            video.muted = true; video.playsInline = true; 
+            video.src = blobUrl;
+            
+            const fallbackTimeout = setTimeout(() => {
+                URL.revokeObjectURL(blobUrl);
+                const cvs = document.createElement('canvas'); cvs.width = 400; cvs.height = 400;
+                const ctx = cvs.getContext('2d'); ctx.fillStyle = "#141414"; ctx.fillRect(0, 0, 400, 400);
+                saveGalleryItem(uniqueId, cvs.toDataURL('image/jpeg', 0.5), true);
+                showToast("Vidéo ajoutée (Miniature auto bloquée)");
+            }, 2500);
+
+            video.onloadeddata = () => { video.currentTime = 1; };
+            
+            video.onseeked = () => {
+                clearTimeout(fallbackTimeout); 
+                const cvs = document.createElement('canvas'); 
+                cvs.width = video.videoWidth || 400; cvs.height = video.videoHeight || 400;
+                cvs.getContext('2d').drawImage(video, 0, 0, cvs.width, cvs.height);
+                saveGalleryItem(uniqueId, cvs.toDataURL('image/jpeg', 0.6), true);
+                URL.revokeObjectURL(blobUrl); showToast("Vidéo sauvegardée !");
+            };
+            
+            video.onerror = () => {
+                clearTimeout(fallbackTimeout); URL.revokeObjectURL(blobUrl);
+                showToast("Erreur lors de la capture", true);
+            }
+        } catch(e) { showToast("Mémoire iPhone saturée !"); }
+    } input.value = '';
+}
+function saveGalleryItem(id, src, isVideo) { appData.gallery.unshift({ id, src, isVideo, title: "Réalisation #" + (appData.gallery.length + 1) }); saveData(); renderApp(); }
+function requestDeleteGalleryItem(event, id) { if(event) event.stopPropagation(); triggerHaptic(); openConfirm("Supprimer ?", "Effacer cette réalisation ?", async () => { appData.gallery = appData.gallery.filter(i => i.id !== id); saveData(); if(window.idbKeyval) await idbKeyval.del(`gal-vid-${id}`); renderApp(); showToast("Supprimée"); }); }
+function openRenameModal(event, id) { if(event) event.stopPropagation(); triggerHaptic(); itemToRename = id; const item = appData.gallery.find(i => i.id === id); if(item) { document.getElementById('renameInput').value = item.title || ''; openModal('renameModal'); } }
+function saveRename() { if(!itemToRename) return; const val = document.getElementById('renameInput').value.trim(); const item = appData.gallery.find(i => i.id === itemToRename); if(item && val) { item.title = val; saveData(); renderApp(); } closeModal('renameModal'); }
+async function openMedia(id) {
+    const item = appData.gallery.find(i => i.id === id); if(!item) return;
+    const modal = document.getElementById('mediaModal'); const img = document.getElementById('mediaImg'); const vid = document.getElementById('mediaVid');
+    img.classList.add('hidden'); vid.classList.add('hidden'); vid.pause(); if (currentMediaBlobUrl) { URL.revokeObjectURL(currentMediaBlobUrl); currentMediaBlobUrl = null; }
+    if(item.isVideo && window.idbKeyval) {
+        try { const file = await idbKeyval.get(`gal-vid-${id}`); if(file) { const blob = new Blob([file], { type: file.type || 'video/mp4' }); currentMediaBlobUrl = URL.createObjectURL(blob); vid.src = currentMediaBlobUrl; vid.classList.remove('hidden'); vid.play().catch(()=>{}); } else return; } catch(e) { return; }
+    } else { img.src = item.src; img.classList.remove('hidden'); }
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+function closeMedia() { const modal = document.getElementById('mediaModal'); modal.classList.add('hidden'); modal.classList.remove('flex'); const vid = document.getElementById('mediaVid'); vid.pause(); vid.removeAttribute('src'); vid.load(); if (currentMediaBlobUrl) { URL.revokeObjectURL(currentMediaBlobUrl); currentMediaBlobUrl = null; } }
+
+// --- GESTION DES VIDÉOS ---
+function getSortedVideos(activeOnly) {
+    let list = appData.videos.filter(v => activeOnly ? !appData.state[v.id]?.done : appData.state[v.id]?.done);
+    if (appData.settings.activeFilter !== 'Tous' && activeOnly) list = list.filter(v => v.tag === appData.settings.activeFilter || (!v.tag && appData.settings.activeFilter === 'Autre'));
+    list.sort((a, b) => b.date - a.date);
+    return list;
+}
+
+function toggleDone(event, id) {
+    if(event) event.stopPropagation(); triggerHaptic(); appData.state[id] = appData.state[id] || {}; appData.state[id].done = !appData.state[id].done;
+    if (appData.state[id].done) appData.state[id].doneDate = Date.now(); saveData();
+    showToast(appData.state[id].done ? "Ajouté aux Terminées" : "Restauré dans la Liste"); renderApp();
+}
+
+function deleteVideo(event, id) { if(event) event.stopPropagation(); triggerHaptic(); openConfirm("Supprimer", "Retirer de la liste ?", () => { appData.videos = appData.videos.filter(v => v.id !== id); delete appData.state[id]; saveData(); renderApp(); showToast("Supprimée"); }); }
+
+function addVideoIdea() {
+    const title = document.getElementById('newTitle').value.trim(); const url = document.getElementById('newUrl').value.trim(); const tag = document.getElementById('newTag').value;
+    if (!title) { showToast("Titre requis !"); return; }
+    const nextId = appData.videos.length ? Math.max(...appData.videos.map(v => v.id)) + 1 : 1;
+    appData.videos.unshift({ id: nextId, title, url: url || "#", date: Date.now(), tag: tag }); saveData();
+    document.getElementById('newTitle').value = ''; document.getElementById('newUrl').value = ''; closeModal('addModal'); switchView('home'); showToast("Ajouté à Ma Liste !");
+}
+
+function confirmReset() { openConfirm("Réinitialiser ?", "Effacer TOUTES les données ?", async () => { appData = { videos: [...baseVideos], state: {}, settings: { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null }, gallery: [] }; saveData(); if(window.idbKeyval) await idbKeyval.clear(); applyTheme('t-cinematic'); updateFilterUI(); switchView('home'); showToast("Appli remise à zéro"); }); }
+function getBgStyle(id) { const hue = (id * 53) % 360; return `background: linear-gradient(145deg, hsl(${hue}, 40%, 20%), hsl(${(hue+40)%360}, 50%, 10%));`; }
+
+// --- MODE FOCUS ---
+let focusTimerInterval = null;
+function openFocus(id) { triggerHaptic(); const video = appData.videos.find(v => v.id === id); if(!video) return; document.getElementById('focus-title').textContent = video.title; document.getElementById('focus-link').href = video.url; document.getElementById('focus-timer').textContent = "15:00"; const m = document.getElementById('focusModal'); m.classList.remove('hidden'); m.classList.add('flex'); }
+function closeFocus() { clearInterval(focusTimerInterval); const m = document.getElementById('focusModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+function startFocusTimer() { triggerHaptic(); let time = 15 * 60; document.getElementById('btn-start-focus').classList.add('hidden'); focusTimerInterval = setInterval(() => { time--; const m = Math.floor(time / 60); const s = time % 60; document.getElementById('focus-timer').textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; if(time <= 0) { clearInterval(focusTimerInterval); triggerHaptic(500); } }, 1000); }
+
+// --- CARROUSEL LISTE (CONTINUER À REGARDER) ---
+function startCarousel() {
+    const grid = document.getElementById('continue-grid'); if(!grid || grid.children.length < 2) return;
+    clearInterval(carouselInterval);
+    
+    const pause = () => clearInterval(carouselInterval);
+    const resume = () => { clearInterval(carouselInterval); carouselInterval = setInterval(scrollFn, 3500); };
+    
+    grid.addEventListener('touchstart', pause, {passive: true}); grid.addEventListener('touchend', resume, {passive: true});
+
+    const scrollFn = () => {
+        if (grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 10) grid.scrollTo({ left: 0, behavior: 'smooth' });
+        else { const cardWidth = grid.children[0].offsetWidth + 12; grid.scrollBy({ left: cardWidth, behavior: 'smooth' }); }
+    };
+    carouselInterval = setInterval(scrollFn, 3500);
+}
+
+// --- RENDU HTML CARTE (2 COLONNES OU CARROUSEL) ---
+function renderCardHTML(v, isDone, showProgress = false, isGrid = false) {
+    const photoBg = appData.state[v.id]?.photo ? `background-image: url('${appData.state[v.id].photo}'); background-size: cover; background-position: center;` : getBgStyle(v.id);
+    const progressHTML = showProgress && !isDone ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"><div class="h-full bg-brand-accent w-[30%]"></div></div>` : '';
+    const layoutClass = isGrid ? 'w-full' : 'scroll-snap-align-start shrink-0 w-[140px]';
+    
+    return `
+    <div class="group animate-pop-in ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" onclick="window.open('${v.url}', '_blank')">
+        <div class="absolute inset-0 card-gradient pointer-events-none"></div>
+        
+        <!-- Bouton Fait/Restaurer (Haut Gauche) -->
+        <div class="absolute top-2 left-2 z-20">
+             <button onclick="toggleDone(event, ${v.id})" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 hover:bg-white/20 shadow-lg" title="${isDone ? 'Restaurer' : 'Marquer comme fait'}">
+                <i data-lucide="${isDone ? 'rotate-ccw' : 'check'}" class="w-4 h-4 ${isDone ? 'text-green-400' : 'text-brand-accent'} stroke-[3]"></i>
+             </button>
+        </div>
+
+        <!-- Boutons Affiche/Poubelle (Haut Droite) -->
+        <div class="absolute top-2 right-2 z-20 flex gap-1">
+             <button onclick="triggerCoverUpload(event, ${v.id})" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 hover:bg-white/20" title="Changer l'affiche"><i data-lucide="image" class="w-4 h-4"></i></button>
+             <button onclick="deleteVideo(event, ${v.id})" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-red-400 active:scale-90 hover:bg-white/20" title="Supprimer"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
+        
+        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-sm pointer-events-none"><div class="w-12 h-12 rounded-full border-2 border-white glass-effect flex items-center justify-center shadow-2xl"><i data-lucide="play" class="w-6 h-6 fill-white ml-1"></i></div></div>
+        
+        <div class="absolute bottom-4 left-3 right-3 z-20 text-center pointer-events-none"><h4 class="text-[13px] font-bold text-white/95 leading-tight line-clamp-2 drop-shadow-md ${isDone ? 'line-through text-gray-400' : ''}">${v.title}</h4></div>
+        ${progressHTML}
+    </div>`;
+}
+
+function renderApp() {
+    const todoList = getSortedVideos(true);
+    const doneList = getSortedVideos(false);
+
+    if(currentView === 'home') {
+        if(todoList.length > 0) {
+            document.getElementById('hero-section').classList.remove('hidden');
+            startHeroCarousel(); 
+            
+            const continueList = todoList.slice(0, 5); 
+            document.getElementById('row-continue').classList.toggle('hidden', continueList.length === 0);
+            document.getElementById('continue-grid').innerHTML = continueList.map(v => renderCardHTML(v, false, true, false)).join('');
+            
+            const myList = todoList.slice(5); 
+            document.getElementById('row-mylist').classList.toggle('hidden', myList.length === 0);
+            document.getElementById('mylist-grid').innerHTML = myList.map(v => renderCardHTML(v, false, false, true)).join('');
+
+            setTimeout(startCarousel, 500);
+        } else {
+            document.getElementById('hero-section').classList.add('hidden'); document.getElementById('row-continue').classList.add('hidden');
+            document.getElementById('mylist-grid').innerHTML = `<div class="col-span-2 w-full text-center text-gray-400 py-10 text-sm">Votre liste est vide.</div>`;
+            clearInterval(carouselInterval);
+            clearInterval(heroInterval);
+        }
+    } else {
+        clearInterval(carouselInterval);
+        clearInterval(heroInterval);
+    }
+
+    if(currentView === 'done') {
+        document.getElementById('done-grid').innerHTML = doneList.length ? doneList.map(v => renderCardHTML(v, true, false, true)).join('') : `<div class="col-span-2 text-center text-gray-500 py-10 text-sm w-full">Rien ici.</div>`;
+    }
+
+    if(currentView === 'studio') {
+        const total = appData.videos.length; const pct = total === 0 ? 0 : Math.round((doneList.length / total) * 100);
+        document.getElementById('stat-done').textContent = doneList.length; document.getElementById('stat-total').textContent = total;
+        setTimeout(() => { document.getElementById('progress-circle').style.strokeDasharray = `${pct}, 100`; document.getElementById('progress-text').textContent = pct + '%'; }, 100);
+
+        const grid = document.getElementById('gallery-grid');
+        grid.innerHTML = appData.gallery.length ? appData.gallery.map((item, index) => {
+            const heightClass = index % 2 === 0 ? 'min-h-[260px]' : 'min-h-[180px]';
+            return `
+            <div class="masonry-item relative group animate-pop-in">
+                <div onclick="triggerHaptic(); openMedia(${item.id})" class="${heightClass} w-full relative rounded-[24px] overflow-hidden shadow-xl cursor-pointer active:scale-95 transition-transform border border-white/10 bg-[#141414]">
+                    <img src="${item.src}" class="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity">
+                    ${item.isVideo ? `<div class="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none"><div class="w-12 h-12 rounded-full glass-effect flex items-center justify-center"><i data-lucide="play" class="w-5 h-5 fill-white ml-0.5"></i></div></div>` : ''}
+                    <button onclick="requestDeleteGalleryItem(event, ${item.id})" class="absolute top-2 right-2 w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 opacity-0 group-hover:opacity-100 transition-opacity"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    <!-- Pillule effet Verre (Pinterest Style) -->
+                    <div class="absolute bottom-2 left-2 right-2 bg-black/40 backdrop-blur-md rounded-[16px] py-2 px-3 flex items-center justify-between shadow-lg border border-white/5">
+                        <span class="text-[11px] font-bold text-white/95 truncate pr-2 drop-shadow-md">${item.title}</span>
+                        <button onclick="openRenameModal(event, ${item.id})" class="text-white active:scale-90 p-1.5 hover:bg-white/20 rounded-full shrink-0 transition-colors"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('') : `<div class="col-span-2 text-center text-gray-500 py-10 text-sm w-full">Aucune réalisation.</div>`;
+    }
+    lucide.createIcons();
+}
+</script>
+</body>
+</html>
