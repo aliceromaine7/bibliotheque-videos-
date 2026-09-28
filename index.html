@@ -40,6 +40,198 @@
     }
   }
 </script>
+<!-- ============================================================
+  CORRECTIF TEEVI
+  À COLLER dans index.html, juste avant </body>
+  (après le dernier </script>). Rien d'autre à modifier.
+============================================================ -->
+<style>
+  /* Bouton supprimer de la galerie toujours visible (pas de survol sur iPhone) */
+  #gallery-grid .group button[onclick^="requestDeleteGalleryItem"] { opacity: 1 !important; }
+</style>
+<script>
+(function () {
+  'use strict';
+
+  // ---------- Utilitaires ----------
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let hydrated = false;
+
+  // ---------- 1. Chargement : plus de limite à 17 vidéos ----------
+  const origLoad = window.loadData;
+  window.loadData = function () {
+    try {
+      const d = JSON.parse(localStorage.getItem(APP_KEY));
+      if (d && Array.isArray(d.videos)) {
+        d.state = d.state || {};
+        d.gallery = d.gallery || [];
+        d.settings = Object.assign(
+          { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null },
+          d.settings
+        );
+        return d;
+      }
+    } catch (e) {}
+    return origLoad();
+  };
+
+  // ---------- 2. Clic sur une carte : plus de bug avec apostrophes ----------
+  window.openVideo = function (id) {
+    const v = appData.videos.find(x => x.id === id);
+    if (v && v.url && v.url !== '#') window.open(v.url, '_blank');
+  };
+
+  window.renderCardHTML = function (v, isDone, showProgress = false, isGrid = false) {
+    const photo = appData.state[v.id]?.photo;
+    const photoBg = photo
+      ? `background-image: url('${photo}'); background-size: cover; background-position: center;`
+      : getBgStyle(v.id);
+    const progressHTML = showProgress && !isDone
+      ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"><div class="h-full bg-brand-accent w-[30%]"></div></div>` : '';
+    const layoutClass = isGrid ? 'w-full' : 'scroll-snap-align-start shrink-0 w-[140px]';
+    return `
+    <div class="group animate-pop-in ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" onclick="openVideo(${v.id})">
+        <div class="absolute inset-0 card-gradient pointer-events-none"></div>
+        <div class="absolute top-2 left-2 z-20">
+             <button onclick="toggleDone(event, ${v.id})" aria-label="${isDone ? 'Restaurer' : 'Marquer comme fait'}" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 hover:bg-white/20 shadow-lg">
+                <i data-lucide="${isDone ? 'rotate-ccw' : 'check'}" class="w-4 h-4 ${isDone ? 'text-green-400' : 'text-brand-accent'} stroke-[3]"></i>
+             </button>
+        </div>
+        <div class="absolute top-2 right-2 z-20 flex gap-1">
+             <button onclick="triggerCoverUpload(event, ${v.id})" aria-label="Changer l'affiche" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 hover:bg-white/20"><i data-lucide="image" class="w-4 h-4"></i></button>
+             <button onclick="deleteVideo(event, ${v.id})" aria-label="Supprimer" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-red-400 active:scale-90 hover:bg-white/20"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
+        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-sm pointer-events-none"><div class="w-12 h-12 rounded-full border-2 border-white glass-effect flex items-center justify-center shadow-2xl"><i data-lucide="play" class="w-6 h-6 fill-white ml-1"></i></div></div>
+        <div class="absolute bottom-4 left-3 right-3 z-20 text-center pointer-events-none"><h4 class="text-[13px] font-bold text-white/95 leading-tight line-clamp-2 drop-shadow-md ${isDone ? 'line-through text-gray-400' : ''}">${esc(v.title)}</h4></div>
+        ${progressHTML}
+    </div>`;
+  };
+
+  // Titre de galerie : on retire < et > (le rendu de la galerie n'échappe pas le HTML)
+  const origRename = window.saveRename;
+  window.saveRename = function () {
+    const i = document.getElementById('renameInput');
+    if (i) i.value = i.value.replace(/[<>]/g, '');
+    origRename();
+  };
+
+  // ---------- 3. Stockage : photos et miniatures dans IndexedDB ----------
+  const saved = new Set();
+  function mediaJobs() {
+    const jobs = [];
+    Object.entries(appData.state).forEach(([id, s]) => {
+      if (s && s.photo) {
+        const k = 'cover-' + id + ':' + s.photo.length;
+        if (!saved.has(k)) jobs.push(idbKeyval.set('cover-' + id, s.photo).then(() => saved.add(k)));
+      }
+    });
+    appData.gallery.forEach(g => {
+      if (g.src) {
+        const k = 'gal-src-' + g.id + ':' + g.src.length;
+        if (!saved.has(k)) jobs.push(idbKeyval.set('gal-src-' + g.id, g.src).then(() => saved.add(k)));
+      }
+    });
+    return jobs;
+  }
+
+  function cleanOrphans() {
+    if (!hydrated) return;
+    idbKeyval.keys().then(ks => ks.forEach(k => {
+      if (typeof k !== 'string') return;
+      if (k.startsWith('cover-') && !appData.state[k.slice(6)]?.photo) idbKeyval.del(k);
+      if (k.startsWith('gal-src-') && !appData.gallery.some(g => 'gal-src-' + g.id === k)) idbKeyval.del(k);
+    })).catch(() => {});
+  }
+
+  window.saveData = function () {
+    const write = data => {
+      try { localStorage.setItem(APP_KEY, JSON.stringify(data)); }
+      catch (e) { showToast('Mémoire saturée !', true); }
+    };
+    if (!window.idbKeyval) { write(appData); return; }
+    const copy = JSON.parse(JSON.stringify(appData));
+    Object.values(copy.state).forEach(s => { delete s.photo; });
+    copy.gallery.forEach(g => { g.src = ''; });
+    Promise.all(mediaJobs())
+      .then(() => { write(copy); cleanOrphans(); })
+      .catch(() => write(appData)); // si IndexedDB échoue, on garde l'ancien mode
+  };
+
+  async function hydrate() {
+    if (window.idbKeyval) {
+      try {
+        const keys = await idbKeyval.keys();
+        for (const k of keys) {
+          if (typeof k !== 'string') continue;
+          if (k.startsWith('cover-')) {
+            const id = k.slice(6), val = await idbKeyval.get(k);
+            if (val && appData.state[id]) appData.state[id].photo = val;
+          } else if (k.startsWith('gal-src-')) {
+            const id = k.slice(8), g = appData.gallery.find(x => String(x.id) === id);
+            if (g) g.src = (await idbKeyval.get(k)) || g.src;
+          }
+        }
+      } catch (e) {}
+    }
+    hydrated = true;
+    saveData();   // migre les anciennes photos hors du localStorage
+    renderApp();
+  }
+
+  // ---------- 4. Export / import de sauvegarde ----------
+  function addBackupUI() {
+    const host = document.querySelector('#view-settings .space-y-8');
+    if (!host || document.getElementById('backup-box')) return;
+    const box = document.createElement('div');
+    box.id = 'backup-box';
+    box.innerHTML = `
+      <p class="text-xs text-gray-400 mb-3 font-bold uppercase tracking-widest pl-2">Sauvegarde</p>
+      <div class="glass-effect rounded-[32px] p-5 space-y-3">
+        <button id="btn-export" class="w-full py-4 rounded-2xl bg-white/10 text-white font-bold active:scale-95 transition-transform">Exporter mes données</button>
+        <label class="block w-full py-4 rounded-2xl bg-white/10 text-white font-bold text-center cursor-pointer active:scale-95 transition-transform">Importer une sauvegarde
+          <input type="file" accept="application/json,.json" class="hidden" id="import-file">
+        </label>
+        <p class="text-[10px] text-gray-400 text-center">Inclut la liste, les affiches et les miniatures. Les vidéos de la galerie et des fonds ne sont pas exportées.</p>
+      </div>`;
+    host.insertBefore(box, host.lastElementChild);
+
+    document.getElementById('btn-export').onclick = () => {
+      triggerHaptic();
+      const blob = new Blob([JSON.stringify(appData)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'teevi-sauvegarde-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      showToast('Sauvegarde exportée');
+    };
+
+    document.getElementById('import-file').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const d = JSON.parse(await f.text());
+        if (!d || !Array.isArray(d.videos)) throw new Error('format');
+        const clean = t => String(t ?? '').replace(/[<>]/g, '');
+        d.videos.forEach(v => { v.title = clean(v.title); v.tag = clean(v.tag); if (!/^https?:\/\//.test(v.url)) v.url = '#'; });
+        d.state = d.state || {};
+        d.gallery = (d.gallery || []).map(g => Object.assign({}, g, { title: clean(g.title) }));
+        d.settings = Object.assign({}, appData.settings, d.settings);
+        appData = d;
+        saveData();
+        applyTheme(appData.settings.theme); updateFilterUI(); renderApp();
+        showToast('Sauvegarde importée');
+      } catch (err) { showToast('Fichier invalide', true); }
+      e.target.value = '';
+    };
+  }
+
+  // ---------- Démarrage ----------
+  appData = loadData();
+  addBackupUI();
+  hydrate();
+})();
+</script>
 
 <style>
   :root {
