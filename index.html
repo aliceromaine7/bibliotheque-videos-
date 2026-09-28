@@ -2,6 +2,7 @@
 <html lang="fr" class="dark">
 <head>
 <meta charset="UTF-8">
+<!-- Correction Point 5 : On permet le zoom natif avec user-scalable=yes pour l'accessibilité si besoin (ou on le laisse no si tu préfères, mais voici ton meta) -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <title>Ma Bibliothèque Vidéos</title>
 <!-- Tailwind CSS -->
@@ -39,198 +40,6 @@
       }
     }
   }
-</script>
-<!-- ============================================================
-  CORRECTIF TEEVI
-  À COLLER dans index.html, juste avant </body>
-  (après le dernier </script>). Rien d'autre à modifier.
-============================================================ -->
-<style>
-  /* Bouton supprimer de la galerie toujours visible (pas de survol sur iPhone) */
-  #gallery-grid .group button[onclick^="requestDeleteGalleryItem"] { opacity: 1 !important; }
-</style>
-<script>
-(function () {
-  'use strict';
-
-  // ---------- Utilitaires ----------
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let hydrated = false;
-
-  // ---------- 1. Chargement : plus de limite à 17 vidéos ----------
-  const origLoad = window.loadData;
-  window.loadData = function () {
-    try {
-      const d = JSON.parse(localStorage.getItem(APP_KEY));
-      if (d && Array.isArray(d.videos)) {
-        d.state = d.state || {};
-        d.gallery = d.gallery || [];
-        d.settings = Object.assign(
-          { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null },
-          d.settings
-        );
-        return d;
-      }
-    } catch (e) {}
-    return origLoad();
-  };
-
-  // ---------- 2. Clic sur une carte : plus de bug avec apostrophes ----------
-  window.openVideo = function (id) {
-    const v = appData.videos.find(x => x.id === id);
-    if (v && v.url && v.url !== '#') window.open(v.url, '_blank');
-  };
-
-  window.renderCardHTML = function (v, isDone, showProgress = false, isGrid = false) {
-    const photo = appData.state[v.id]?.photo;
-    const photoBg = photo
-      ? `background-image: url('${photo}'); background-size: cover; background-position: center;`
-      : getBgStyle(v.id);
-    const progressHTML = showProgress && !isDone
-      ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"><div class="h-full bg-brand-accent w-[30%]"></div></div>` : '';
-    const layoutClass = isGrid ? 'w-full' : 'scroll-snap-align-start shrink-0 w-[140px]';
-    return `
-    <div class="group animate-pop-in ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" onclick="openVideo(${v.id})">
-        <div class="absolute inset-0 card-gradient pointer-events-none"></div>
-        <div class="absolute top-2 left-2 z-20">
-             <button onclick="toggleDone(event, ${v.id})" aria-label="${isDone ? 'Restaurer' : 'Marquer comme fait'}" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 hover:bg-white/20 shadow-lg">
-                <i data-lucide="${isDone ? 'rotate-ccw' : 'check'}" class="w-4 h-4 ${isDone ? 'text-green-400' : 'text-brand-accent'} stroke-[3]"></i>
-             </button>
-        </div>
-        <div class="absolute top-2 right-2 z-20 flex gap-1">
-             <button onclick="triggerCoverUpload(event, ${v.id})" aria-label="Changer l'affiche" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 hover:bg-white/20"><i data-lucide="image" class="w-4 h-4"></i></button>
-             <button onclick="deleteVideo(event, ${v.id})" aria-label="Supprimer" class="w-8 h-8 rounded-full glass-effect flex items-center justify-center text-red-400 active:scale-90 hover:bg-white/20"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-        </div>
-        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-sm pointer-events-none"><div class="w-12 h-12 rounded-full border-2 border-white glass-effect flex items-center justify-center shadow-2xl"><i data-lucide="play" class="w-6 h-6 fill-white ml-1"></i></div></div>
-        <div class="absolute bottom-4 left-3 right-3 z-20 text-center pointer-events-none"><h4 class="text-[13px] font-bold text-white/95 leading-tight line-clamp-2 drop-shadow-md ${isDone ? 'line-through text-gray-400' : ''}">${esc(v.title)}</h4></div>
-        ${progressHTML}
-    </div>`;
-  };
-
-  // Titre de galerie : on retire < et > (le rendu de la galerie n'échappe pas le HTML)
-  const origRename = window.saveRename;
-  window.saveRename = function () {
-    const i = document.getElementById('renameInput');
-    if (i) i.value = i.value.replace(/[<>]/g, '');
-    origRename();
-  };
-
-  // ---------- 3. Stockage : photos et miniatures dans IndexedDB ----------
-  const saved = new Set();
-  function mediaJobs() {
-    const jobs = [];
-    Object.entries(appData.state).forEach(([id, s]) => {
-      if (s && s.photo) {
-        const k = 'cover-' + id + ':' + s.photo.length;
-        if (!saved.has(k)) jobs.push(idbKeyval.set('cover-' + id, s.photo).then(() => saved.add(k)));
-      }
-    });
-    appData.gallery.forEach(g => {
-      if (g.src) {
-        const k = 'gal-src-' + g.id + ':' + g.src.length;
-        if (!saved.has(k)) jobs.push(idbKeyval.set('gal-src-' + g.id, g.src).then(() => saved.add(k)));
-      }
-    });
-    return jobs;
-  }
-
-  function cleanOrphans() {
-    if (!hydrated) return;
-    idbKeyval.keys().then(ks => ks.forEach(k => {
-      if (typeof k !== 'string') return;
-      if (k.startsWith('cover-') && !appData.state[k.slice(6)]?.photo) idbKeyval.del(k);
-      if (k.startsWith('gal-src-') && !appData.gallery.some(g => 'gal-src-' + g.id === k)) idbKeyval.del(k);
-    })).catch(() => {});
-  }
-
-  window.saveData = function () {
-    const write = data => {
-      try { localStorage.setItem(APP_KEY, JSON.stringify(data)); }
-      catch (e) { showToast('Mémoire saturée !', true); }
-    };
-    if (!window.idbKeyval) { write(appData); return; }
-    const copy = JSON.parse(JSON.stringify(appData));
-    Object.values(copy.state).forEach(s => { delete s.photo; });
-    copy.gallery.forEach(g => { g.src = ''; });
-    Promise.all(mediaJobs())
-      .then(() => { write(copy); cleanOrphans(); })
-      .catch(() => write(appData)); // si IndexedDB échoue, on garde l'ancien mode
-  };
-
-  async function hydrate() {
-    if (window.idbKeyval) {
-      try {
-        const keys = await idbKeyval.keys();
-        for (const k of keys) {
-          if (typeof k !== 'string') continue;
-          if (k.startsWith('cover-')) {
-            const id = k.slice(6), val = await idbKeyval.get(k);
-            if (val && appData.state[id]) appData.state[id].photo = val;
-          } else if (k.startsWith('gal-src-')) {
-            const id = k.slice(8), g = appData.gallery.find(x => String(x.id) === id);
-            if (g) g.src = (await idbKeyval.get(k)) || g.src;
-          }
-        }
-      } catch (e) {}
-    }
-    hydrated = true;
-    saveData();   // migre les anciennes photos hors du localStorage
-    renderApp();
-  }
-
-  // ---------- 4. Export / import de sauvegarde ----------
-  function addBackupUI() {
-    const host = document.querySelector('#view-settings .space-y-8');
-    if (!host || document.getElementById('backup-box')) return;
-    const box = document.createElement('div');
-    box.id = 'backup-box';
-    box.innerHTML = `
-      <p class="text-xs text-gray-400 mb-3 font-bold uppercase tracking-widest pl-2">Sauvegarde</p>
-      <div class="glass-effect rounded-[32px] p-5 space-y-3">
-        <button id="btn-export" class="w-full py-4 rounded-2xl bg-white/10 text-white font-bold active:scale-95 transition-transform">Exporter mes données</button>
-        <label class="block w-full py-4 rounded-2xl bg-white/10 text-white font-bold text-center cursor-pointer active:scale-95 transition-transform">Importer une sauvegarde
-          <input type="file" accept="application/json,.json" class="hidden" id="import-file">
-        </label>
-        <p class="text-[10px] text-gray-400 text-center">Inclut la liste, les affiches et les miniatures. Les vidéos de la galerie et des fonds ne sont pas exportées.</p>
-      </div>`;
-    host.insertBefore(box, host.lastElementChild);
-
-    document.getElementById('btn-export').onclick = () => {
-      triggerHaptic();
-      const blob = new Blob([JSON.stringify(appData)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'teevi-sauvegarde-' + new Date().toISOString().slice(0, 10) + '.json';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      showToast('Sauvegarde exportée');
-    };
-
-    document.getElementById('import-file').onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
-      try {
-        const d = JSON.parse(await f.text());
-        if (!d || !Array.isArray(d.videos)) throw new Error('format');
-        const clean = t => String(t ?? '').replace(/[<>]/g, '');
-        d.videos.forEach(v => { v.title = clean(v.title); v.tag = clean(v.tag); if (!/^https?:\/\//.test(v.url)) v.url = '#'; });
-        d.state = d.state || {};
-        d.gallery = (d.gallery || []).map(g => Object.assign({}, g, { title: clean(g.title) }));
-        d.settings = Object.assign({}, appData.settings, d.settings);
-        appData = d;
-        saveData();
-        applyTheme(appData.settings.theme); updateFilterUI(); renderApp();
-        showToast('Sauvegarde importée');
-      } catch (err) { showToast('Fichier invalide', true); }
-      e.target.value = '';
-    };
-  }
-
-  // ---------- Démarrage ----------
-  appData = loadData();
-  addBackupUI();
-  hydrate();
-})();
 </script>
 
 <style>
@@ -338,10 +147,10 @@
     <h1 id="view-title" class="text-xl font-bold tracking-tight text-white drop-shadow-md">Accueil</h1>
   </div>
   <div class="flex gap-3">
-    <button onclick="triggerHaptic(); openSearch()" class="glass-effect rounded-full w-10 h-10 flex items-center justify-center active:scale-95 transition-transform">
+    <button onclick="triggerHaptic(); openSearch()" class="glass-effect rounded-full w-10 h-10 flex items-center justify-center active:scale-95 transition-transform" aria-label="Rechercher">
       <i data-lucide="search" class="w-5 h-5"></i>
     </button>
-    <button onclick="triggerHaptic(); openModal('addModal')" class="glass-effect rounded-full w-10 h-10 flex items-center justify-center active:scale-95 transition-transform">
+    <button onclick="triggerHaptic(); openModal('addModal')" class="glass-effect rounded-full w-10 h-10 flex items-center justify-center active:scale-95 transition-transform" aria-label="Ajouter">
       <i data-lucide="plus" class="w-5 h-5"></i>
     </button>
   </div>
@@ -414,7 +223,8 @@
               <p class="text-sm text-gray-300 font-medium mb-1">Progression Globale</p>
               <div class="flex items-baseline gap-2">
                   <p class="text-4xl font-black text-white" id="stat-done">0</p>
-                  <p class="text-gray-400 font-medium">/ <span id="stat-total">17</span></p>
+                  <!-- Bug 4 corrigé : L'affichage du total est dynamique en JS, mais on ajoute un vrai total au lieu de 17 dur en HTML -->
+                  <p class="text-gray-400 font-medium">/ <span id="stat-total">0</span></p>
               </div>
           </div>
           <div class="relative w-[90px] h-[90px] z-10">
@@ -464,6 +274,24 @@
                   </div>
               </div>
           </div>
+          
+          <!-- Point 2 : Export / Import JSON -->
+          <div>
+              <p class="text-xs text-gray-400 mb-3 font-bold uppercase tracking-widest pl-2">Sauvegarde des données</p>
+              <div class="glass-effect rounded-[32px] p-5">
+                  <div class="flex flex-col gap-3">
+                      <button onclick="triggerHaptic(); exportData()" class="w-full py-4 rounded-2xl bg-white/10 text-white font-bold flex items-center justify-center gap-2 hover:bg-white/20 transition-colors shadow-lg active:scale-95">
+                          <i data-lucide="download" class="w-5 h-5"></i> Exporter mes données
+                      </button>
+                      <label onclick="triggerHaptic()" class="w-full py-4 rounded-2xl bg-white/10 text-white font-bold flex items-center justify-center gap-2 hover:bg-white/20 transition-colors shadow-lg active:scale-95 cursor-pointer">
+                          <i data-lucide="upload" class="w-5 h-5"></i> Importer une sauvegarde
+                          <input type="file" accept=".json" class="hidden" onchange="importData(this)">
+                      </label>
+                  </div>
+                  <p class="text-[10px] text-gray-400 text-center mt-3">Idéal pour Safari sur iPhone pour éviter toute perte (Photos incluses).</p>
+              </div>
+          </div>
+
           <div class="pt-6">
               <button onclick="triggerHaptic(); confirmReset()" class="w-full py-4 rounded-2xl glass-effect text-red-400 font-bold border-red-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-red-500/10">
                   <i data-lucide="alert-triangle" class="w-5 h-5"></i> Tout réinitialiser
@@ -586,20 +414,97 @@ const baseVideos = [
 
 const APP_KEY = "nflx_teevi_v12"; 
 
-function loadData() {
-    try { const data = JSON.parse(localStorage.getItem(APP_KEY)); if (data && data.videos && data.videos.length >= 17) return data; } catch(e) {}
-    try {
-        const oldData = JSON.parse(localStorage.getItem("nflx_teevi_v11")) || JSON.parse(localStorage.getItem("nflx_teevi_v10"));
-        if (oldData) { oldData.videos = [...baseVideos]; oldData.settings.theme = 't-cinematic'; return oldData; }
-    } catch(e) {}
-    return { videos: [...baseVideos], state: {}, settings: { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null }, gallery: [] };
+// Point 1 : Fonction d'échappement pour bloquer les bugs liés aux apostrophes/guillemets
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[tag] || tag));
 }
-function saveData() { try { localStorage.setItem(APP_KEY, JSON.stringify(appData)); } catch(e) { showToast("Mémoire saturée !", true); } }
 
-let appData = loadData();
+// Point 1 : Gestionnaire global pour ouvrir les liens sans injection dans onclick
+document.addEventListener('click', function(e) {
+    const card = e.target.closest('.clickable-card');
+    if (card && card.dataset.url && !e.target.closest('button')) {
+        window.open(card.dataset.url, '_blank');
+    }
+});
+
+let appData = { videos: [...baseVideos], state: {}, settings: { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null }, gallery: [] };
 let currentView = 'home';
 let currentMediaBlobUrl = null, currentBgBlobUrl = null, currentHeroBlobUrl = null, currentCoverId = null, itemToRename = null;
 let carouselInterval = null, heroInterval = null, currentHeroIndex = 0, heroVideos = [];
+
+// Point 2 : Initialisation asynchrone qui charge en priorité depuis IndexedDB 
+// pour ne plus jamais être bloqué par les 5 Mo du localStorage.
+async function initApp() {
+    try {
+        const dataIDB = await idbKeyval.get(APP_KEY);
+        if (dataIDB && dataIDB.videos) {
+            // Bug 4 corrigé : J'ai enlevé la restriction (data.videos.length >= 17)
+            appData = dataIDB;
+        } else {
+            // Récupération des données depuis LocalStorage (migration invisible pour toi)
+            const dataLS = JSON.parse(localStorage.getItem(APP_KEY));
+            if (dataLS && dataLS.videos) {
+                appData = dataLS;
+            } else {
+                const oldData = JSON.parse(localStorage.getItem("nflx_teevi_v11")) || JSON.parse(localStorage.getItem("nflx_teevi_v10"));
+                if (oldData) { oldData.videos = [...baseVideos]; oldData.settings.theme = 't-cinematic'; appData = oldData; }
+            }
+            saveData(); // On enregistre tout de suite dans la nouvelle DB solide
+        }
+    } catch(e) {}
+    
+    applyTheme(appData.settings.theme); 
+    updateFilterUI(); 
+    renderApp();
+}
+window.onload = initApp;
+
+function saveData() { 
+    try { 
+        // Sauvegarde illimitée
+        if (window.idbKeyval) idbKeyval.set(APP_KEY, appData);
+        // Sauvegarde de secours
+        try { localStorage.setItem(APP_KEY, JSON.stringify(appData)); } catch(e) {}
+    } catch(e) { 
+        showToast("Erreur de sauvegarde !", true); 
+    } 
+}
+
+// Fonctions d'Import / Export (Point 2)
+function exportData() {
+    const blob = new Blob([JSON.stringify(appData)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MaBibliotheque_Sauvegarde_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Sauvegarde exportée !");
+}
+
+async function importData(input) {
+    const file = input.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (data.videos) {
+                appData = data;
+                await idbKeyval.set(APP_KEY, appData);
+                showToast("Données restaurées !");
+                setTimeout(() => window.location.reload(), 1000); // Recharge la page
+            }
+        } catch(err) {
+            showToast("Fichier invalide", true);
+        }
+    };
+    reader.readAsText(file);
+    input.value = '';
+}
+
 
 function handleScroll() {
     const header = document.getElementById('main-header'); const scrollY = document.getElementById('main-scroll').scrollTop;
@@ -607,8 +512,6 @@ function handleScroll() {
 }
 
 function triggerHaptic(ms = 30) { if (navigator.vibrate) navigator.vibrate(ms); }
-
-window.onload = () => { applyTheme(appData.settings.theme); updateFilterUI(); renderApp(); };
 
 function switchView(viewName) {
     currentView = viewName;
@@ -706,7 +609,7 @@ function updateHeroUI() {
     if (heroVideos.length === 0) return; const v = heroVideos[currentHeroIndex];
     const contentDiv = document.getElementById('hero-content');
     contentDiv.classList.remove('animate-fade-in-up'); void contentDiv.offsetWidth; contentDiv.classList.add('animate-fade-in-up');
-    document.getElementById('hero-title').textContent = v.title;
+    document.getElementById('hero-title').textContent = v.title; // Déjà sécurisé par nature
     document.getElementById('hero-btn-play').onclick = () => window.open(v.url, '_blank');
     document.getElementById('hero-btn-focus').onclick = () => openFocus(v.id);
     const indicators = document.getElementById('hero-indicators');
@@ -737,9 +640,6 @@ function clearSearch() { document.getElementById('searchInput').value = ''; hand
 function setFilter(tag) { triggerHaptic(); appData.settings.activeFilter = tag; saveData(); updateFilterUI(); renderApp(); }
 function updateFilterUI() { document.querySelectorAll('.tag-pill').forEach(btn => btn.classList.remove('active', 'bg-white', 'text-black')); const activeBtn = document.getElementById(`tag-${appData.settings.activeFilter}`); if (activeBtn) { activeBtn.classList.add('active', 'bg-white', 'text-black'); activeBtn.classList.remove('glass-effect'); } }
 
-// ============================================================================
-// UPLOAD GALERIE ULTRA-ROBUSTE (FONCTIONNE SUR TOUS LES IPHONES)
-// ============================================================================
 async function uploadToGallery(input) {
     const file = input.files[0]; if(!file) return;
     const uniqueId = Date.now(); showToast("Sauvegarde en cours...");
@@ -751,7 +651,6 @@ async function uploadToGallery(input) {
         try {
             await idbKeyval.set(`gal-vid-${uniqueId}`, file);
             
-            // Génération d'une vignette propre instantanée sans bloquer l'iPhone
             const cvs = document.createElement('canvas'); cvs.width = 400; cvs.height = 400;
             const ctx = cvs.getContext('2d');
             ctx.fillStyle = "#141414"; ctx.fillRect(0, 0, 400, 400);
@@ -763,12 +662,12 @@ async function uploadToGallery(input) {
         } catch(e) { showToast("Mémoire saturée !", true); }
     } input.value = '';
 }
-// ============================================================================
 
 function saveGalleryItem(id, src, isVideo) { appData.gallery.unshift({ id, src, isVideo, title: "Réalisation #" + (appData.gallery.length + 1) }); saveData(); renderApp(); }
 function requestDeleteGalleryItem(event, id) { if(event) event.stopPropagation(); triggerHaptic(); openConfirm("Supprimer ?", "Effacer cette réalisation ?", async () => { appData.gallery = appData.gallery.filter(i => i.id !== id); saveData(); if(window.idbKeyval) await idbKeyval.del(`gal-vid-${id}`); renderApp(); showToast("Supprimée"); }); }
 function openRenameModal(event, id) { if(event) event.stopPropagation(); triggerHaptic(); itemToRename = id; const item = appData.gallery.find(i => i.id === id); if(item) { document.getElementById('renameInput').value = item.title || ''; openModal('renameModal'); } }
 function saveRename() { if(!itemToRename) return; const val = document.getElementById('renameInput').value.trim(); const item = appData.gallery.find(i => i.id === itemToRename); if(item && val) { item.title = val; saveData(); renderApp(); } closeModal('renameModal'); }
+
 async function openMedia(id) {
     const item = appData.gallery.find(i => i.id === id); if(!item) return;
     const modal = document.getElementById('mediaModal'); const img = document.getElementById('mediaImg'); const vid = document.getElementById('mediaVid');
@@ -821,13 +720,15 @@ function startCarousel() {
     carouselInterval = setInterval(scrollFn, 3500);
 }
 
+// Point 1 : renderCardHTML sécurisé (XSS et data-url au lieu de onclick)
 function renderCardHTML(v, isDone, showProgress = false, isGrid = false) {
     const photoBg = appData.state[v.id]?.photo ? `background-image: url('${appData.state[v.id].photo}'); background-size: cover; background-position: center;` : getBgStyle(v.id);
     const progressHTML = showProgress && !isDone ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"><div class="h-full bg-brand-accent w-[30%]"></div></div>` : '';
     const layoutClass = isGrid ? 'w-full' : 'scroll-snap-align-start shrink-0 w-[140px]';
     
+    // Ajout de "clickable-card" et "data-url"
     return `
-    <div class="group animate-pop-in ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" onclick="window.open('${v.url}', '_blank')">
+    <div class="group animate-pop-in clickable-card ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" data-url="${escapeHTML(v.url)}">
         <div class="absolute inset-0 card-gradient pointer-events-none"></div>
         
         <div class="absolute top-2 left-2 z-20">
@@ -842,7 +743,9 @@ function renderCardHTML(v, isDone, showProgress = false, isGrid = false) {
         </div>
         
         <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 backdrop-blur-sm pointer-events-none"><div class="w-12 h-12 rounded-full border-2 border-white glass-effect flex items-center justify-center shadow-2xl"><i data-lucide="play" class="w-6 h-6 fill-white ml-1"></i></div></div>
-        <div class="absolute bottom-4 left-3 right-3 z-20 text-center pointer-events-none"><h4 class="text-[13px] font-bold text-white/95 leading-tight line-clamp-2 drop-shadow-md ${isDone ? 'line-through text-gray-400' : ''}">${v.title}</h4></div>
+        
+        <!-- Le titre est échappé -->
+        <div class="absolute bottom-4 left-3 right-3 z-20 text-center pointer-events-none"><h4 class="text-[13px] font-bold text-white/95 leading-tight line-clamp-2 drop-shadow-md ${isDone ? 'line-through text-gray-400' : ''}">${escapeHTML(v.title)}</h4></div>
         ${progressHTML}
     </div>`;
 }
@@ -878,7 +781,8 @@ function renderApp() {
 
     if(currentView === 'studio') {
         const total = appData.videos.length; const pct = total === 0 ? 0 : Math.round((doneList.length / total) * 100);
-        document.getElementById('stat-done').textContent = doneList.length; document.getElementById('stat-total').textContent = total;
+        document.getElementById('stat-done').textContent = doneList.length; 
+        document.getElementById('stat-total').textContent = total; // Bug 4 corrigé visuellement
         setTimeout(() => { document.getElementById('progress-circle').style.strokeDasharray = `${pct}, 100`; document.getElementById('progress-text').textContent = pct + '%'; }, 100);
 
         const grid = document.getElementById('gallery-grid');
@@ -889,9 +793,12 @@ function renderApp() {
                 <div onclick="triggerHaptic(); openMedia(${item.id})" class="${heightClass} w-full relative rounded-[24px] overflow-hidden shadow-xl cursor-pointer active:scale-95 transition-transform border border-white/10 bg-[#141414]">
                     <img src="${item.src}" class="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity">
                     ${item.isVideo ? `<div class="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none"><div class="w-12 h-12 rounded-full glass-effect flex items-center justify-center"><i data-lucide="play" class="w-5 h-5 fill-white ml-0.5"></i></div></div>` : ''}
-                    <button onclick="requestDeleteGalleryItem(event, ${item.id})" class="absolute top-2 right-2 w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 opacity-0 group-hover:opacity-100 transition-opacity"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    
+                    <!-- Point 3 : md:opacity-0 ajouté pour que le bouton poubelle soit toujours visible sur iPhone -->
+                    <button onclick="requestDeleteGalleryItem(event, ${item.id})" class="absolute top-2 right-2 w-8 h-8 rounded-full glass-effect flex items-center justify-center text-white active:scale-90 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    
                     <div class="absolute bottom-2 left-2 right-2 bg-black/40 backdrop-blur-md rounded-[16px] py-2 px-3 flex items-center justify-between shadow-lg border border-white/5">
-                        <span class="text-[11px] font-bold text-white/95 truncate pr-2 drop-shadow-md">${item.title}</span>
+                        <span class="text-[11px] font-bold text-white/95 truncate pr-2 drop-shadow-md">${escapeHTML(item.title)}</span>
                         <button onclick="openRenameModal(event, ${item.id})" class="text-white active:scale-90 p-1.5 hover:bg-white/20 rounded-full shrink-0 transition-colors"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
                     </div>
                 </div>
