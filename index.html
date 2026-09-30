@@ -5,6 +5,15 @@
 <!-- Correction Point 5 : On permet le zoom natif avec user-scalable=yes pour l'accessibilité si besoin (ou on le laisse no si tu préfères, mais voici ton meta) -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <title>Ma Bibliothèque Vidéos</title>
+<!-- ===== AJOUT APPLICATION (PWA) ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#141414">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TEEVI">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- ===== FIN AJOUT ===== -->
 <!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- Base de données locale (IndexedDB) -->
@@ -808,5 +817,8 @@ function renderApp() {
     lucide.createIcons();
 }
 </script>
+<!-- ===== AJOUT APPLICATION (PWA) ===== -->
+<script src="pwa.js" defer></script>
+<!-- ===== FIN AJOUT ===== -->
 </body>
 </html>
