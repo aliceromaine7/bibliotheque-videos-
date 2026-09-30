@@ -425,8 +425,25 @@ const baseVideos = [
   {id:14, title:"Influenceuse menteuse", url:"https://vm.tiktok.com/ZN8MPjjTY/", date: 1700000004000, tag: "Beauté"},
   {id:15, title:"Un gros", url:"https://vm.tiktok.com/ZN8MPMdBs/", date: 1700000003000, tag: "Humour"},
   {id:16, title:"Foyer difficile", url:"https://vm.tiktok.com/ZN8MPktTW/", date: 1700000002000, tag: "Storytime"},
-  {id:17, title:"Enfant maltraité", url:"https://vm.tiktok.com/ZN8Mfoajo/", date: 1700000001000, tag: "Storytime"}
+  {id:17, title:"Enfant maltraité", url:"https://vm.tiktok.com/ZN8Mfoajo/", date: 1700000001000, tag: "Storytime"},
+  {id:18, title:"Aisselles poilue", url:"https://vm.tiktok.com/ZN8r6xdHL/", date: 1790422078818, tag: "Humour"},
+  {id:19, title:"Influenceuse 2.0", url:"https://vm.tiktok.com/ZN8r6gKoe/", date: 1790422238207, tag: "Beauté"},
+  {id:20, title:"La grosse aigrie", url:"https://vm.tiktok.com/ZN8r6T98X/", date: 1790422317316, tag: "Tendance"},
+  {id:21, title:"Grande mère tana", url:"https://vm.tiktok.com/ZN8r6gsus/", date: 1790422733639, tag: "Tendance"},
+  {id:22, title:"Sœur opposé", url:"https://vm.tiktok.com/ZN8r6VPPx/", date: 1790423019678, tag: "Tendance"},
+  {id:23, title:"2e famille", url:"https://vm.tiktok.com/ZN8rUE2tY/", date: 1790525785864, tag: "Tendance"},
+  {id:24, title:"Date mensongère", url:"https://vm.tiktok.com/ZN8ryEGn9/", date: 1790531064215, tag: "Humour"},
+  {id:25, title:"Tatouage", url:"https://vm.tiktok.com/ZN8ryWMfC/", date: 1790533237916, tag: "Tendance"},
+  {id:26, title:"Carte bancaire", url:"https://vm.tiktok.com/ZN8rPLKaV/", date: 1790545594743, tag: "Tendance"},
+  {id:27, title:"Bus à minuit", url:"https://vm.tiktok.com/ZN8ruABNE/", date: 1790585697908, tag: "Tendance"},
+  {id:28, title:"Le chantier", url:"https://vm.tiktok.com/ZN8rxjKWF/", date: 1790594527840, tag: "Tendance"},
+  {id:29, title:"Mère problématique", url:"https://vm.tiktok.com/ZN8rCrSLB/", date: 1790605769916, tag: "Tendance"},
+  {id:30, title:"Faux pasteur", url:"https://vm.tiktok.com/ZN8r48cnw/", date: 1790613746646, tag: "Humour"},
+  {id:31, title:"Novelas", url:"https://vm.tiktok.com/ZN8r4J27X/", date: 1790615754486, tag: "Tendance"}
 ];
+
+// Etats "fini" de départ (ta bibliothèque du 30/09)
+const BASE_STATE = {"12": {"done": true, "doneDate": 1790422349133}, "25": {"done": true, "doneDate": 1790798996481}};
 
 const APP_KEY = "nflx_teevi_v12"; 
 
@@ -446,7 +463,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
-let appData = { videos: [...baseVideos], state: {}, settings: { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null }, gallery: [] };
+let appData = { videos: [...baseVideos], state: JSON.parse(JSON.stringify(BASE_STATE)), settings: { theme: 't-cinematic', customBg: null, bgType: 'image', activeFilter: 'Tous', heroType: 'none', heroImg: null }, gallery: [] };
 let currentView = 'home';
 let currentMediaBlobUrl = null, currentBgBlobUrl = null, currentHeroBlobUrl = null, currentCoverId = null, itemToRename = null;
 let carouselInterval = null, heroInterval = null, currentHeroIndex = 0, heroVideos = [];
