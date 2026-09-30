@@ -95,7 +95,7 @@
   const _card = window.renderCardHTML;
   window.renderCardHTML = function (v, isDone, sp, ig) {
     let h = _card(v, isDone, sp, ig);
-    const st = isDone ? 'made' : (v.status || 'todo');
+    const st = isDone ? 'made' : (v.pstatus || 'todo');
     const lab = st !== 'todo' ? STATUS[st] : '';
     const badge = (lab || v.note) ? '<div class="absolute bottom-14 left-0 right-0 z-20 flex justify-center gap-1 pointer-events-none">' +
       (lab ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-black/50 backdrop-blur">' + lab + '</span>' : '') +
@@ -210,7 +210,7 @@
       if (v.url !== oldUrl) { delete v.thumb; delete v.thumbTry; }
       v.tags = editTags.length ? editTags.slice() : ['Autre']; v.tag = v.tags[0];
       v.note = $('eNote').value.trim();
-      const s = $('eStatus').value; v.status = s === 'made' ? 'todo' : s;
+      const s = $('eStatus').value; v.pstatus = s === 'made' ? 'todo' : s;
       v.galleryId = $('eGal').value ? Number($('eGal').value) : null;
       const st = appData.state[v.id] = appData.state[v.id] || {}, want = s === 'made';
       if (want !== !!st.done) { st.done = want; if (want) st.doneDate = Date.now(); }
@@ -222,7 +222,7 @@
     const v = appData.videos.find(x => x.id === id); if (!v) return;
     editId = id; editTags = tagsOf(v).slice(); oldUrl = v.url || '';
     $('eTitle').value = v.title || ''; $('eUrl').value = v.url === '#' ? '' : (v.url || ''); $('eNote').value = v.note || '';
-    $('eStatus').value = appData.state[id]?.done ? 'made' : (v.status || 'todo');
+    $('eStatus').value = appData.state[id]?.done ? 'made' : (v.pstatus || 'todo');
     const g = $('eGal'); g.innerHTML = '<option value="">Aucune réalisation liée</option>';
     appData.gallery.forEach(i => { const o = el('option', '', i.title || 'Réalisation'); o.value = i.id; g.appendChild(o); });
     g.value = v.galleryId || ''; $('eViewGal').classList.toggle('hidden', !g.value);
@@ -286,5 +286,47 @@
       localStorage.setItem('teevi_remind', day); setTimeout(() => showToast('Pense à sauvegarder (Options)', true), 2500);
     }
     if (navigator.onLine) fetchThumbs(false);
+  };
+})();
+
+/* ===== Fiche vidéo : un appui sur la carte ouvre la fiche (plus de crayon) ===== */
+(function () {
+  if (typeof openVideoDetail !== 'function') return;
+  const $ = id => document.getElementById(id);
+  const tagsOf = v => (v.tags && v.tags.length ? v.tags : [v.tag || 'Autre']);
+
+  // 1. Cartes épurées : on retire le crayon
+  const _card = window.renderCardHTML;
+  window.renderCardHTML = function (v, isDone, sp, ig) {
+    return _card(v, isDone, sp, ig).replace(/<div class="absolute top-2 right-2 z-20"><button onclick="openEdit[\s\S]*?<\/button><\/div>/, '');
+  };
+
+  // 2. La fenêtre Modifier n'a plus de doublon de statut (la fiche a le sien)
+  const _edit = window.openEdit;
+  window.openEdit = function (e, id) { _edit(e, id); const s = $('eStatus'); if (s) s.style.display = 'none'; };
+
+  // 3. Fiche enrichie : miniature, tags, note, bouton Modifier
+  const _ovd = window.openVideoDetail;
+  window.openVideoDetail = function (id) {
+    _ovd(id);
+    const v = appData.videos.find(x => x.id === id); if (!v) return;
+    if (!appData.state[id]?.photo && v.thumb) $('video-detail-cover').style.backgroundImage = "url('" + encodeURI(v.thumb).replace(/'/g, '%27') + "')";
+    $('video-detail-duration').style.display = v.duration ? '' : 'none';
+    $('video-detail-creator').style.display = v.creator ? '' : 'none';
+    let x = $('vd-extra');
+    if (!x) { x = document.createElement('div'); x.id = 'vd-extra'; x.className = 'mb-5 space-y-4'; $('video-detail-description-wrap').before(x); }
+    x.innerHTML = '';
+    const tags = document.createElement('div'); tags.className = 'flex flex-wrap gap-2';
+    tagsOf(v).forEach(t => { const s = document.createElement('span'); s.className = 'px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-xs font-bold'; s.textContent = t; tags.appendChild(s); });
+    x.appendChild(tags);
+    const n = document.createElement('div');
+    n.innerHTML = '<p class="text-[10px] uppercase tracking-[.18em] text-gray-500 font-bold mb-2">Note</p>';
+    const np = document.createElement('p'); np.className = 'text-sm leading-6 whitespace-pre-line ' + (v.note ? 'text-gray-300' : 'text-gray-500');
+    np.textContent = v.note || 'Aucune note pour le moment.'; n.appendChild(np); x.appendChild(n);
+    const row = document.createElement('div'); row.className = 'flex gap-2';
+    const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'flex-1 py-3 rounded-2xl bg-white/10 border border-white/10 font-bold text-sm active:scale-95'; b.textContent = label; b.onclick = fn; row.appendChild(b); };
+    mk('Modifier', () => { closeVideoDetail(); openEdit(null, id); });
+    if (v.galleryId && appData.gallery.some(g => g.id === v.galleryId)) mk('Ma réalisation', () => { closeVideoDetail(); switchView('studio'); setTimeout(() => openMedia(v.galleryId), 400); });
+    x.appendChild(row);
   };
 })();

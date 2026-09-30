@@ -139,6 +139,10 @@
 
   .masonry-grid { column-count: 2; column-gap: 12px; }
   .masonry-item { break-inside: avoid; margin-bottom: 12px; }
+
+  .video-detail-backdrop { background: rgba(0,0,0,.82); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .video-detail-panel { background: linear-gradient(180deg, rgba(25,25,25,.98), rgba(10,10,10,.99)); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 -20px 70px rgba(0,0,0,.55); }
+  .video-detail-cover { min-height: 300px; background-size: cover; background-position: center; }
 </style>
 </head>
 <body class="t-cinematic h-screen w-screen overflow-hidden flex flex-col relative text-white">
@@ -400,6 +404,9 @@
     <video id="mediaVid" controls playsinline class="max-w-full max-h-screen hidden bg-black"></video>
 </div>
 
+
+<div id="videoDetailModal" class="fixed inset-0 video-detail-backdrop z-[350] hidden flex-col justify-end" onclick="closeVideoDetail()"><div class="video-detail-panel w-full max-h-[94vh] rounded-t-[32px] overflow-hidden animate-pop-in" onclick="event.stopPropagation()"><div class="relative video-detail-cover" id="video-detail-cover"><div class="absolute inset-0 bg-gradient-to-t from-[#191919] via-black/10 to-black/20"></div><button onclick="triggerHaptic(); closeVideoDetail()" class="absolute top-5 right-5 w-11 h-11 rounded-full bg-black/45 backdrop-blur-md border border-white/15 flex items-center justify-center z-10 active:scale-90"><i data-lucide="x" class="w-5 h-5"></i></button><div class="absolute bottom-5 left-5 right-5 z-10"><div id="video-detail-status" class="inline-flex items-center px-3 py-1.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-[11px] font-bold mb-3"></div><h2 id="video-detail-title" class="text-2xl font-black leading-tight drop-shadow-2xl"></h2></div></div><div class="overflow-y-auto max-h-[58vh] px-5 pt-5 pb-8"><div class="flex flex-wrap gap-2 mb-5 text-xs text-gray-300"><span id="video-detail-category" class="px-3 py-1.5 rounded-full bg-white/8 border border-white/10"></span><span id="video-detail-duration" class="px-3 py-1.5 rounded-full bg-white/8 border border-white/10"></span><span id="video-detail-creator" class="px-3 py-1.5 rounded-full bg-white/8 border border-white/10"></span><span id="video-detail-date" class="px-3 py-1.5 rounded-full bg-white/8 border border-white/10"></span></div><div class="mb-5"><label class="text-[10px] uppercase tracking-[.18em] text-gray-500 font-bold block mb-2">Statut</label><select id="video-detail-status-select" onchange="updateVideoDetailStatus(this.value)" class="w-full bg-white/8 border border-white/10 rounded-2xl px-4 py-3.5 text-white font-semibold focus:outline-none focus:border-white/30"><option>En cours</option><option>À publier</option><option>Publiée</option><option>Brouillon</option></select></div><div id="video-detail-description-wrap" class="mb-5 hidden"><p class="text-[10px] uppercase tracking-[.18em] text-gray-500 font-bold mb-2">Description</p><p id="video-detail-description" class="text-sm leading-6 text-gray-300"></p></div><div id="video-detail-transcription-wrap" class="mb-6 hidden"><p class="text-[10px] uppercase tracking-[.18em] text-gray-500 font-bold mb-2">Transcription</p><p id="video-detail-transcription" class="text-sm leading-6 text-gray-300 whitespace-pre-line"></p></div><div class="flex gap-3"><button onclick="triggerHaptic(); closeVideoDetail()" class="flex-1 py-4 rounded-2xl bg-white/8 border border-white/10 text-white font-bold active:scale-95">Fermer</button><button onclick="openVideoExternal()" class="flex-[1.4] py-4 rounded-2xl bg-white text-black font-bold flex items-center justify-center gap-2 active:scale-95"><i data-lucide="external-link" class="w-4 h-4"></i> Voir sur TikTok</button></div></div></div></div>
+
 <script>
 const baseVideos = [
   {id:1, title:"Maman et son fils", url:"https://vm.tiktok.com/ZN8Mrj2Ch/", date: 1700000017000, tag: "Storytime"},
@@ -434,8 +441,8 @@ function escapeHTML(str) {
 // Point 1 : Gestionnaire global pour ouvrir les liens sans injection dans onclick
 document.addEventListener('click', function(e) {
     const card = e.target.closest('.clickable-card');
-    if (card && card.dataset.url && !e.target.closest('button')) {
-        window.open(card.dataset.url, '_blank');
+    if (card && card.dataset.id && !e.target.closest('button')) {
+        openVideoDetail(Number(card.dataset.id));
     }
 });
 
@@ -619,7 +626,7 @@ function updateHeroUI() {
     const contentDiv = document.getElementById('hero-content');
     contentDiv.classList.remove('animate-fade-in-up'); void contentDiv.offsetWidth; contentDiv.classList.add('animate-fade-in-up');
     document.getElementById('hero-title').textContent = v.title; // Déjà sécurisé par nature
-    document.getElementById('hero-btn-play').onclick = () => window.open(v.url, '_blank');
+    document.getElementById('hero-btn-play').onclick = () => openVideoDetail(v.id);
     document.getElementById('hero-btn-focus').onclick = () => openFocus(v.id);
     const indicators = document.getElementById('hero-indicators');
     if(indicators) { indicators.innerHTML = heroVideos.map((_, i) => `<div class="${i === currentHeroIndex ? 'w-4 h-2 bg-brand-accent' : 'w-2 h-2 bg-white/30'} rounded-full transition-all duration-300"></div>`).join(''); }
@@ -707,7 +714,7 @@ function addVideoIdea() {
     const title = document.getElementById('newTitle').value.trim(); const url = document.getElementById('newUrl').value.trim(); const tag = document.getElementById('newTag').value;
     if (!title) { showToast("Titre requis !"); return; }
     const nextId = appData.videos.length ? Math.max(...appData.videos.map(v => v.id)) + 1 : 1;
-    appData.videos.unshift({ id: nextId, title, url: url || "#", date: Date.now(), tag: tag }); saveData();
+    appData.videos.unshift({ id: nextId, title, url: url || "#", date: Date.now(), tag: tag, status: 'En cours' }); saveData();
     document.getElementById('newTitle').value = ''; document.getElementById('newUrl').value = ''; closeModal('addModal'); switchView('home'); showToast("Ajouté à Ma Liste !");
 }
 
@@ -715,6 +722,14 @@ function confirmReset() { openConfirm("Réinitialiser ?", "Effacer TOUTES les do
 function getBgStyle(id) { const hue = (id * 53) % 360; return `background: linear-gradient(145deg, hsl(${hue}, 40%, 20%), hsl(${(hue+40)%360}, 50%, 10%));`; }
 
 let focusTimerInterval = null;
+let currentDetailVideoId = null;
+function getVideoStatus(v){ return v.status || (appData.state[v.id]?.done ? 'À publier' : 'En cours'); }
+function formatVideoDate(t){ if(!t)return 'Date inconnue'; try{return new Date(t).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return 'Date inconnue';} }
+function openVideoDetail(id){ triggerHaptic(); const v=appData.videos.find(x=>x.id===id); if(!v)return; currentDetailVideoId=id; const cover=document.getElementById('video-detail-cover'); const poster=appData.state[v.id]?.photo; cover.style.backgroundImage=poster?"url('"+poster+"')":"linear-gradient(145deg, hsl("+((v.id*53)%360)+",40%,20%), hsl("+(((v.id*53)+40)%360)+",50%,10%))"; document.getElementById('video-detail-title').textContent=v.title||'Sans titre'; const s=getVideoStatus(v); document.getElementById('video-detail-status').textContent=s; document.getElementById('video-detail-status-select').value=['En cours','À publier','Publiée','Brouillon'].includes(s)?s:'En cours'; document.getElementById('video-detail-category').textContent=v.tag||'Sans catégorie'; document.getElementById('video-detail-duration').textContent=v.duration?v.duration+' s':'Durée —'; document.getElementById('video-detail-creator').textContent=v.creator?'@'+String(v.creator).replace(/^@/,''):'Créateur —'; document.getElementById('video-detail-date').textContent=formatVideoDate(v.date); const dw=document.getElementById('video-detail-description-wrap'),tw=document.getElementById('video-detail-transcription-wrap'); dw.classList.toggle('hidden',!v.description);tw.classList.toggle('hidden',!v.transcription);document.getElementById('video-detail-description').textContent=v.description||'';document.getElementById('video-detail-transcription').textContent=v.transcription||'';const m=document.getElementById('videoDetailModal');m.classList.remove('hidden');m.classList.add('flex');lucide.createIcons(); }
+function updateVideoDetailStatus(value){if(!currentDetailVideoId)return;const v=appData.videos.find(x=>x.id===currentDetailVideoId);if(!v)return;v.status=value;saveData();document.getElementById('video-detail-status').textContent=value;showToast('Statut mis à jour');}
+function openVideoExternal(){if(!currentDetailVideoId)return;const v=appData.videos.find(x=>x.id===currentDetailVideoId);if(!v||!v.url||v.url==='#'){showToast('Aucun lien TikTok disponible',true);return;}triggerHaptic();window.open(v.url,'_blank');}
+function closeVideoDetail(){const m=document.getElementById('videoDetailModal');if(m){m.classList.add('hidden');m.classList.remove('flex');}currentDetailVideoId=null;}
+
 function openFocus(id) { triggerHaptic(); const video = appData.videos.find(v => v.id === id); if(!video) return; document.getElementById('focus-title').textContent = video.title; document.getElementById('focus-link').href = video.url; document.getElementById('focus-timer').textContent = "15:00"; const m = document.getElementById('focusModal'); m.classList.remove('hidden'); m.classList.add('flex'); }
 function closeFocus() { clearInterval(focusTimerInterval); const m = document.getElementById('focusModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
 function startFocusTimer() { triggerHaptic(); let time = 15 * 60; document.getElementById('btn-start-focus').classList.add('hidden'); focusTimerInterval = setInterval(() => { time--; const m = Math.floor(time / 60); const s = time % 60; document.getElementById('focus-timer').textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; if(time <= 0) { clearInterval(focusTimerInterval); triggerHaptic(500); } }, 1000); }
@@ -737,7 +752,7 @@ function renderCardHTML(v, isDone, showProgress = false, isGrid = false) {
     
     // Ajout de "clickable-card" et "data-url"
     return `
-    <div class="group animate-pop-in clickable-card ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" data-url="${escapeHTML(v.url)}">
+    <div class="group animate-pop-in clickable-card ${layoutClass} aspect-[2/3] rounded-[20px] relative overflow-hidden bg-[#181818] shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all hover:scale-105 hover:z-10 cursor-pointer active:scale-95 border border-white/10" style="${photoBg}" data-id="${v.id}">
         <div class="absolute inset-0 card-gradient pointer-events-none"></div>
         
         <div class="absolute top-2 left-2 z-20">
