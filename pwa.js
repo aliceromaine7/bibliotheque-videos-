@@ -2,7 +2,12 @@
 (function () {
   // 1. Service worker (hors-ligne + installation)
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // Mise à jour automatique : recharge une fois quand une nouvelle version prend le relais
+    const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(reg => {
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {}));
   }
   // 2. Demande un stockage durable (évite que le navigateur efface tes données)
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -187,6 +192,7 @@
       '<div id="eTags" class="flex flex-wrap gap-2"></div>' +
       '<div class="flex gap-2"><input id="eNewTag" type="text" placeholder="Nouveau tag" class="' + INPUT + '"><button id="eAddTag" class="px-5 ' + BTN + '">+</button></div>' +
       '<textarea id="eNote" rows="3" placeholder="Note / idée…" class="' + INPUT + '"></textarea>' +
+      '<textarea id="eTrans" rows="4" placeholder="Transcription (colle ici le texte de la vidéo)…" class="' + INPUT + '"></textarea>' +
       '<select id="eGal" class="' + INPUT + ' appearance-none"></select>' +
       '<button id="eViewGal" class="hidden w-full text-sm ' + BTN + '">Voir ma réalisation</button>' +
       '<div class="flex gap-2"><button id="eCover" class="flex-1 text-sm ' + BTN + '">🖼 Affiche</button><button id="eDel" class="flex-1 text-sm text-red-400 ' + BTN + '">🗑 Supprimer</button></div>' +
@@ -209,7 +215,7 @@
       v.title = t; v.url = $('eUrl').value.trim() || '#';
       if (v.url !== oldUrl) { delete v.thumb; delete v.thumbTry; }
       v.tags = editTags.length ? editTags.slice() : ['Autre']; v.tag = v.tags[0];
-      v.note = $('eNote').value.trim();
+      v.note = $('eNote').value.trim(); v.transcription = $('eTrans').value.trim();
       const s = $('eStatus').value; v.pstatus = s === 'made' ? 'todo' : s;
       v.galleryId = $('eGal').value ? Number($('eGal').value) : null;
       const st = appData.state[v.id] = appData.state[v.id] || {}, want = s === 'made';
@@ -221,7 +227,7 @@
     if (event) event.stopPropagation(); triggerHaptic();
     const v = appData.videos.find(x => x.id === id); if (!v) return;
     editId = id; editTags = tagsOf(v).slice(); oldUrl = v.url || '';
-    $('eTitle').value = v.title || ''; $('eUrl').value = v.url === '#' ? '' : (v.url || ''); $('eNote').value = v.note || '';
+    $('eTitle').value = v.title || ''; $('eUrl').value = v.url === '#' ? '' : (v.url || ''); $('eNote').value = v.note || ''; $('eTrans').value = v.transcription || '';
     $('eStatus').value = appData.state[id]?.done ? 'made' : (v.pstatus || 'todo');
     const g = $('eGal'); g.innerHTML = '<option value="">Aucune réalisation liée</option>';
     appData.gallery.forEach(i => { const o = el('option', '', i.title || 'Réalisation'); o.value = i.id; g.appendChild(o); });
@@ -327,6 +333,42 @@
     const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'flex-1 py-3 rounded-2xl bg-white/10 border border-white/10 font-bold text-sm active:scale-95'; b.textContent = label; b.onclick = fn; row.appendChild(b); };
     mk('Modifier', () => { closeVideoDetail(); openEdit(null, id); });
     if (v.galleryId && appData.gallery.some(g => g.id === v.galleryId)) mk('Ma réalisation', () => { closeVideoDetail(); switchView('studio'); setTimeout(() => openMedia(v.galleryId), 400); });
+    const cb = document.createElement('button'); cb.className = 'w-full py-3.5 rounded-2xl bg-white text-black font-bold text-sm active:scale-95 transition-transform';
+    cb.textContent = '✨ Travailler avec Claude'; cb.onclick = () => workWithClaude(id); x.appendChild(cb);
     x.appendChild(row);
   };
 })();
+
+/* ===== Fiche vidéo : défilement correct sur iPhone ===== */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#videoDetailModal>.video-detail-panel{display:flex;flex-direction:column;max-height:92vh;max-height:92dvh}' +
+    '#video-detail-cover{min-height:0;height:32vh;max-height:250px;flex:0 0 auto}' +
+    '#videoDetailModal .overflow-y-auto{flex:1 1 auto;min-height:0;max-height:none!important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 28px)}';
+  document.head.appendChild(st);
+})();
+
+/* ===== Workflow : de la fiche vers Claude (prompt prêt à l'emploi) ===== */
+window.workWithClaude = function (id) {
+  const v = appData.videos.find(x => x.id === id); if (!v) return;
+  const tags = (v.tags && v.tags.length ? v.tags : [v.tag || 'Autre']).join(', ');
+  const trans = (v.transcription || '').trim();
+  const lines = [
+    "Je veux créer ma propre vidéo à partir de cette idée vue sur TikTok.", "",
+    "Titre : " + (v.title || 'Sans titre'),
+    v.url && v.url !== '#' ? "Lien : " + v.url : null,
+    "Catégorie : " + tags,
+    v.note ? "Ma note : " + v.note : null, "",
+    trans ? "Transcription :\n" + trans : "Je n'ai pas encore la transcription : dis-moi comment la récupérer, ou je te la colle juste après.", "",
+    "Ce que j'attends de toi :",
+    "1. Résume l'histoire et explique ce qui la rend accrocheuse.",
+    "2. Propose-moi une version ORIGINALE (personnages, lieu et chute différents, sans copier l'original).",
+    "3. Écris le script scène par scène, puis les prompts pour générer la vidéo avec l'IA.",
+    "Si tu as besoin de précisions, pose-moi une question à la fois."
+  ].filter(l => l !== null).join("\n");
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(lines).catch(() => {});
+  const q = lines.length < 5000 ? lines : lines.slice(0, 4800) + "\n[…texte tronqué : le prompt complet est copié, colle-le ici]";
+  closeVideoDetail();
+  showToast('Prompt copié — ouverture de Claude…');
+  window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank');
+};
