@@ -364,6 +364,7 @@ window.workWithClaude = function (id) {
     "1. Résume l'histoire et explique ce qui la rend accrocheuse.",
     "2. Propose-moi une version ORIGINALE (personnages, lieu et chute différents, sans copier l'original).",
     "3. Écris le script scène par scène, puis les prompts pour générer la vidéo avec l'IA.",
+    "Format imposé pour la vidéo : vertical 9:16, style animation 3D Pixar, vitesse normale, voix naturelle et expressive (pas robotique).",
     "Si tu as besoin de précisions, pose-moi une question à la fois."
   ].filter(l => l !== null).join("\n");
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(lines).catch(() => {});
@@ -372,3 +373,16 @@ window.workWithClaude = function (id) {
   showToast('Prompt copié — ouverture de Claude…');
   window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank');
 };
+
+/* ===== Bannière d'accueil : affiche la miniature de la vidéo mise en avant ===== */
+(function () {
+  if (typeof updateHeroUI !== 'function') return;
+  const _uhu = window.updateHeroUI;
+  window.updateHeroUI = function () {
+    _uhu();
+    const v = (typeof heroVideos !== 'undefined' && heroVideos[currentHeroIndex]) || null;
+    if (!v || !v.thumb || appData.state[v.id]?.photo || appData.settings.heroType !== 'none') return;
+    const url = "url('" + encodeURI(v.thumb).replace(/'/g, '%27') + "'), linear-gradient(145deg,#222,#0a0a0a)";
+    setTimeout(() => { const bg = document.getElementById('hero-bg'); if (bg) bg.style.backgroundImage = url; }, 350);
+  };
+})();
